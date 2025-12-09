@@ -1,0 +1,16 @@
+# 1. Секретні ключі
+.env
+.env.local
+.env.*.local
+
+# 2. Папки бібліотек
+node_modules/
+venv/
+__pycache__/
+*.exe
+
+# 3. Системні файли та логи
+.DS_Store
+dist/
+*.log
+.vscode/
