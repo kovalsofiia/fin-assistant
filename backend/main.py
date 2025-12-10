@@ -70,11 +70,14 @@ class TransactionPatch(BaseModel):
     currency: Optional[str] = None
     manual_rate: Optional[float] = None
 
-
 class CategoryCreate(BaseModel):
     name: str
     type: str  # 'income' або 'expense'
     user_id: str
+
+class ProfileUpdate(BaseModel):
+    is_fop: bool
+    full_name: Optional[str] = None 
 
 # --- ENDPOINTS ---
 
@@ -314,31 +317,42 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
 def get_categories(user_id: Optional[str] = None):
     """
     Отримує список категорій.
-    Повертає:
-    - Системні категорії (доступні всім).
-    - Особисті категорії користувача (якщо передано user_id).
+    Адаптується під тип користувача (ФОП чи ні).
     """
     try:
-        query = supabase.table("categories").select("*")
+        # 1. Визначаємо статус користувача (ФОП чи ні?)
+        user_is_fop = True # За замовчуванням (якщо user_id не передали або сталася помилка)
         
         if user_id:
-            # Рядки, де (user_id IS NULL) АБО (user_id == мій_id)
+            profile_response = supabase.table("profiles").select("is_fop").eq("id", user_id).execute()
+            if profile_response.data:
+                user_is_fop = profile_response.data[0]['is_fop']
+
+        # 2. Будуємо запит на категорії
+        query = supabase.table("categories").select("*")
+        
+        # Фільтр по власнику (Системні + Свої)
+        if user_id:
             query = query.or_(f"user_id.is.null,user_id.eq.{user_id}")
         else:
-            # Якщо user_id не передали - показуємо тільки системні
             query = query.is_("user_id", "null")
             
+        # 3. Фільтр "ФОП / Не ФОП"
+        # Якщо користувач НЕ ФОП -> показуємо тільки ті, де is_fop_only = FALSE
+        # Якщо користувач ФОП -> показуємо ВСЕ (фільтр не потрібен)
+        if not user_is_fop:
+            query = query.eq("is_fop_only", False)
+
         response = query.execute()
         
-        # Розділяємо на групи для зручності фронтенду
-        # Це дозволить малювати два окремих списки
         income_cats = [c for c in response.data if c['type'] == 'income']
         expense_cats = [c for c in response.data if c['type'] == 'expense']
         
         return {
             "income": income_cats,
             "expense": expense_cats,
-            "all": response.data
+            "all": response.data,
+            "user_is_fop": user_is_fop # Повертаємо фронтенду інфо про статус
         }
     except Exception as e:
         print(f"Categories error: {e}")
@@ -375,4 +389,25 @@ def delete_category(category_id: str, user_id: str):
         return {"message": "Категорію видалено"}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/profile")
+def get_profile(user_id: str):
+    """Отримати дані профілю"""
+    try:
+        response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        if not response.data:
+             # Якщо профілю немає (старий юзер), створимо його "на льоту" або повернемо дефолт
+             return {"id": user_id, "is_fop": True, "full_name": ""}
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/profile")
+def update_profile(user_id: str, profile: ProfileUpdate):
+    """Оновити налаштування (наприклад, вимкнути режим ФОП)"""
+    try:
+        response = supabase.table("profiles").update(profile.dict(exclude_unset=True)).eq("id", user_id).execute()
+        return response.data
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
