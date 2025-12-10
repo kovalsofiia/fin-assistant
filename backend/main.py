@@ -70,6 +70,12 @@ class TransactionPatch(BaseModel):
     currency: Optional[str] = None
     manual_rate: Optional[float] = None
 
+
+class CategoryCreate(BaseModel):
+    name: str
+    type: str  # 'income' або 'expense'
+    user_id: str
+
 # --- ENDPOINTS ---
 
 @app.get("/")
@@ -300,4 +306,73 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
         if isinstance(e, HTTPException):
             raise e
         print(f"PATCH error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- ЕНДПОЙНТИ ДЛЯ КАТЕГОРІЙ ---
+
+@app.get("/categories")
+def get_categories(user_id: Optional[str] = None):
+    """
+    Отримує список категорій.
+    Повертає:
+    - Системні категорії (доступні всім).
+    - Особисті категорії користувача (якщо передано user_id).
+    """
+    try:
+        query = supabase.table("categories").select("*")
+        
+        if user_id:
+            # Рядки, де (user_id IS NULL) АБО (user_id == мій_id)
+            query = query.or_(f"user_id.is.null,user_id.eq.{user_id}")
+        else:
+            # Якщо user_id не передали - показуємо тільки системні
+            query = query.is_("user_id", "null")
+            
+        response = query.execute()
+        
+        # Розділяємо на групи для зручності фронтенду
+        # Це дозволить малювати два окремих списки
+        income_cats = [c for c in response.data if c['type'] == 'income']
+        expense_cats = [c for c in response.data if c['type'] == 'expense']
+        
+        return {
+            "income": income_cats,
+            "expense": expense_cats,
+            "all": response.data
+        }
+    except Exception as e:
+        print(f"Categories error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/categories")
+def create_category(cat: CategoryCreate):
+    """Створити нову категорію користувача"""
+    try:
+        data = {
+            "name": cat.name,
+            "type": cat.type,
+            "user_id": cat.user_id
+        }
+        response = supabase.table("categories").insert(data).execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/categories/{category_id}")
+def delete_category(category_id: str, user_id: str):
+    """Видалити власну категорію"""
+    try:
+        # Спробуємо видалити. RLS (політики бази) не дадуть видалити системну категорію.
+        response = supabase.table("categories").delete()\
+            .eq("id", category_id)\
+            .eq("user_id", user_id)\
+            .execute()
+            
+        # Якщо список data порожній, значить нічого не видалилось (бо не знайшли або немає прав)
+        if not response.data:
+            raise HTTPException(status_code=403, detail="Не можна видалити цю категорію (можливо, вона системна)")
+            
+        return {"message": "Категорію видалено"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
