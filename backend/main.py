@@ -114,3 +114,83 @@ def create_transaction(tx: TransactionCreate):
     except Exception as e:
         print(f"DB Error: {e}")
         raise HTTPException(status_code=500, detail=f"Помилка запису в базу: {str(e)}")
+    
+@app.get("/transactions")
+def get_transactions(
+    user_id: str, 
+    limit: int = 50, 
+    offset: int = 0,             # Для пагінації (гортати сторінки)
+    start_date: Optional[date] = None, # Фільтр: З якої дати
+    end_date: Optional[date] = None,   # Фільтр: По яку дату
+    type: Optional[str] = None         # Фільтр: 'income' або 'expense'
+):
+    """
+    Отримує список транзакцій з можливістю фільтрації.
+    
+    Параметри:
+    - start_date / end_date: Вибірка за період (напр. квартал).
+    - type: Показати тільки доходи або витрати.
+    - limit / offset: Пагінація.
+    """
+    try:
+        # 1. Починаємо будувати запит
+        query = supabase.table("transactions")\
+            .select("*")\
+            .eq("user_id", user_id)
+            
+        # 2. Накладаємо фільтри, якщо вони передані
+        if start_date:
+            query = query.gte("transaction_date", start_date.isoformat()) # >= start_date
+            
+        if end_date:
+            query = query.lte("transaction_date", end_date.isoformat())   # <= end_date
+            
+        if type:
+            query = query.eq("transaction_type", type)
+
+        # 3. Сортування та ліміти (завжди в кінці)
+        response = query\
+            .order("transaction_date", desc=True)\
+            .order("created_at", desc=True)\
+            .range(offset, offset + limit - 1)\
+            .execute()
+            
+        return response.data
+        
+    except Exception as e:
+        print(f"Error fetching transactions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.delete("/transactions/{transaction_id}")
+def delete_transaction(transaction_id: str, user_id: str):
+    """
+    Видаляє транзакцію за її ID.
+    Перевіряє, чи належить вона цьому користувачу.
+    """
+    try:
+        # 1. Спочатку перевіряємо, чи існує такий запис у цього юзера
+        # (Хоча RLS це робить, але краще мати явну перевірку для API відповіді)
+        check = supabase.table("transactions")\
+            .select("transaction_id")\
+            .eq("transaction_id", transaction_id)\
+            .eq("user_id", user_id)\
+            .execute()
+            
+        if not check.data:
+            raise HTTPException(status_code=404, detail="Транзакцію не знайдено або у вас немає прав на її видалення")
+
+        # 2. Видаляємо
+        supabase.table("transactions")\
+            .delete()\
+            .eq("transaction_id", transaction_id)\
+            .eq("user_id", user_id)\
+            .execute()
+            
+        return {"message": "✅ Транзакцію видалено"}
+        
+    except Exception as e:
+        # Якщо це наша помилка 404 - прокидаємо її далі
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Error deleting: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
