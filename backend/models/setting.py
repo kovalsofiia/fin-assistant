@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from models.common_data import FopGroup
+from models.common import FopGroup
 
 class FopSettingsBase(BaseModel):
     # Валідація: Група тільки 1, 2, 3 або 4
