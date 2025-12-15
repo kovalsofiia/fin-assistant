@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date as date_type
 from typing import Optional
 
@@ -75,9 +75,19 @@ class CategoryCreate(BaseModel):
     type: str  # 'income' або 'expense'
     user_id: str
 
+# Базова схема профілю
+class ProfileBase(BaseModel):
+    is_fop: bool = True
+    # Обмежуємо ім'я: мінімум 2 символи, максимум 100. Забороняємо пусті рядки.
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100, pattern=r"^[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ\s\-\']+$")
+
+class ProfileCreate(ProfileBase):
+    user_id: str # При створенні ID обов'язковий
+
 class ProfileUpdate(BaseModel):
-    is_fop: bool
-    full_name: Optional[str] = None 
+    # В Update всі поля опціональні, але правила валідації ті самі
+    is_fop: Optional[bool] = None
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100)
 
 # --- ENDPOINTS ---
 
@@ -390,24 +400,84 @@ def delete_category(category_id: str, user_id: str):
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get("/profile")
-def get_profile(user_id: str):
-    """Отримати дані профілю"""
+
+# --- PROFILE ENDPOINTS (Improved) ---
+
+@app.post("/profile", status_code=201)
+def create_profile(profile: ProfileCreate):
+    """
+    Явне створення профілю (якщо авто-тригер не спрацював).
+    """
     try:
-        response = supabase.table("profiles").select("*").eq("id", user_id).execute()
-        if not response.data:
-             # Якщо профілю немає (старий юзер), створимо його "на льоту" або повернемо дефолт
-             return {"id": user_id, "is_fop": True, "full_name": ""}
+        # Перевірка, чи профіль вже існує
+        existing = supabase.table("profiles").select("id").eq("id", profile.user_id).execute()
+        if existing.data:
+            raise HTTPException(status_code=409, detail="Профіль для цього користувача вже існує")
+
+        data = {
+            "id": profile.user_id,
+            "is_fop": profile.is_fop,
+            "full_name": profile.full_name
+        }
+        response = supabase.table("profiles").insert(data).execute()
         return response.data[0]
     except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=f"Помилка створення профілю: {str(e)}")
+
+@app.get("/profile/{user_id}")
+def get_profile(user_id: str):
+    """
+    Отримати профіль. 
+    Більше не створює 'фейковий' профіль, якщо його немає в БД, 
+    а чесно каже 404 (або фронтенд має викликати POST).
+    """
+    try:
+        response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Профіль не знайдено")
+            
+        return response.data[0]
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/profile")
+@app.patch("/profile/{user_id}")
 def update_profile(user_id: str, profile: ProfileUpdate):
-    """Оновити налаштування (наприклад, вимкнути режим ФОП)"""
+    """
+    Оновлення даних. Валідація через Pydantic не пропустить довгі імена.
+    """
     try:
-        response = supabase.table("profiles").update(profile.dict(exclude_unset=True)).eq("id", user_id).execute()
-        return response.data
+        # exclude_unset=True: беремо тільки ті поля, які реально передали в JSON
+        update_data = profile.dict(exclude_unset=True)
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Не передано даних для оновлення")
+
+        response = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Профіль не знайдено для оновлення")
+            
+        return response.data[0]
     except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/profile/{user_id}")
+def delete_profile(user_id: str):
+    """
+    Повне видалення профілю (GDPR).
+    Увага: це видалить запис з profiles, але user в auth.users залишиться.
+    """
+    try:
+        response = supabase.table("profiles").delete().eq("id", user_id).execute()
+        
+        if not response.data:
+             raise HTTPException(status_code=404, detail="Профіль не знайдено")
+             
+        return {"message": "✅ Профіль успішно видалено"}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
