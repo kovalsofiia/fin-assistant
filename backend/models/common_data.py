@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, IntEnum
 
 class CommonType(str, Enum):
     """
@@ -7,3 +7,9 @@ class CommonType(str, Enum):
     """
     INCOME = "income"
     EXPENSE = "expense"
+
+class FopGroup(IntEnum):
+    GROUP_1 = 1
+    GROUP_2 = 2
+    GROUP_3 = 3
+    GROUP_4 = 4

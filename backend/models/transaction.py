@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date as date_type
-from models.common_type import CommonType
+from backend.models.common_data import CommonType
 
 class TransactionCreate(BaseModel):
     user_id: str

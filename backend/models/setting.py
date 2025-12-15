@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Optional
+from models.common_data import FopGroup
 
 class FopSettingsBase(BaseModel):
     # Валідація: Група тільки 1, 2, 3 або 4
-    fop_group: Optional[int] = Field(None, ge=1, le=4)
+    fop_group: Optional[FopGroup] = None
     # ЗЕД: True/False
     is_zed: Optional[bool] = None
     # Податок: від 0% до 100%

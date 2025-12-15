@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from models.common_type import CommonType
+from backend.models.common_data import CommonType
 
 class CategoryCreate(BaseModel):
     name: str
