@@ -1,7 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import date as date_type
-
+from core.constants import (
+    MIN_NAME_LENGTH,
+    MAX_NAME_LENGTH,
+    NAME_REGEX
+)
 class ProfileBase(BaseModel):
     is_fop: bool = True
     
@@ -16,10 +20,12 @@ class ProfileBase(BaseModel):
     #   - Дефіс (-) та пробіли
     full_name: Optional[str] = Field(
         None, 
-        min_length=1, 
-        max_length=100, 
-        pattern=r"^[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ\s\-\'’]+$"
+        min_length=MIN_NAME_LENGTH, 
+        max_length=MAX_NAME_LENGTH, 
+        pattern=NAME_REGEX
     )
+    class Config:
+        str_strip_whitespace = True
 
 class ProfileCreate(ProfileBase):
     user_id: str # При створенні ID обов'язковий
@@ -29,7 +35,9 @@ class ProfileUpdate(BaseModel):
     is_fop: Optional[bool] = None
     full_name: Optional[str] = Field(
         None, 
-        min_length=1, 
-        max_length=100, 
-        pattern=r"^[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ\s\-\'’]+$"
+        min_length=MIN_NAME_LENGTH, 
+        max_length=MAX_NAME_LENGTH, 
+        pattern=NAME_REGEX
     )
+    class Config:
+        str_strip_whitespace = True

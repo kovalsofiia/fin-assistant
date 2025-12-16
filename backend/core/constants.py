@@ -1,0 +1,19 @@
+# ВАЛІДАЦІЯ ТЕКСТУ
+MIN_NAME_LENGTH = 1
+MAX_NAME_LENGTH = 100
+MAX_DESCRIPTION_LENGTH = 300
+CURRENCY_REGEX = r"^[A-Z]{3}$"
+NAME_REGEX = r"^[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ\s\-\'’]+$"
+
+MIN_CATEGORY_LENGTH = 1
+MAX_CATEGORY_LENGTH = 50
+
+# ФІНАНСОВІ ЛІМІТИ
+MIN_TRANSACTION_AMOUNT = 0.01  # Мінімальна сума транзакції (1 копійка)
+MAX_TAX_PERCENT = 100.0
+MIN_TAX_PERCENT = 0.0
+MIN_MANUAL_RATE = 0
+
+# ЄСВ
+MAX_ESV_VALUE = 160000.0
+MIN_ESV_VALUE = 1760.0
