@@ -10,25 +10,53 @@ const api = axios.create({
 });
 
 export default {
+  // --- ТРАНЗАКЦІЇ ---
   getTransactions(userId, params = {}) {
+    // params: { limit, offset, start_date, end_date, type }
     return api.get('/transactions', { params: { user_id: userId, ...params } });
   },
   createTransaction(data) {
     return api.post('/transactions', data);
   },
+  deleteTransaction(transactionId, userId) {
+    return api.delete(`/transactions/${transactionId}`, { 
+      params: { user_id: userId } 
+    });
+  },
+  patchTransaction(transactionId, userId, data) {
+    return api.patch(`/transactions/${transactionId}`, data, {
+      params: { user_id: userId }
+    });
+  },
+
+  // --- КАТЕГОРІЇ ---
   getCategories(userId) {
     return api.get('/categories', { params: { user_id: userId } });
   },
+  createCategory(data) {
+    return api.post('/categories', data);
+  },
+  deleteCategory(categoryId, userId) {
+    return api.delete(`/categories/${categoryId}`, {
+      params: { user_id: userId }
+    });
+  },
+
+  // --- ПРОФІЛЬ ---
   getProfile(userId) {
     return api.get(`/profile/${userId}`);
   },
   createProfile(data) {
-    // data: { user_id: "...", is_fop: true, full_name: "..." }
     return api.post('/profile/', data);
-},
+  },
   updateProfile(userId, data) {
     return api.patch(`/profile/${userId}`, data);
   },
+  deleteProfile(userId) {
+    return api.delete(`/profile/${userId}`);
+  },
+
+  // --- НАЛАШТУВАННЯ ФОП ---
   getFopSettings(userId) {
     return api.get(`/settings/${userId}`);
   },
