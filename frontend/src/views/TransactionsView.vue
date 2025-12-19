@@ -69,27 +69,6 @@ const openCreateModal = () => {
   isModalOpen.value = true;
 };
 
-// Відкрити модалку для РЕДАГУВАННЯ
-const openEditModal = (tx) => {
-  editingTxId.value = tx.transaction_id;
-  
-  // Заповнюємо форму даними з транзакції
-  form.type = tx.transaction_type;
-  // Якщо є оригінальна сума у валюті - показуємо її, інакше гривню
-  form.amount = tx.amount_original || tx.transaction_amount; 
-  form.date = tx.transaction_date.split('T')[0]; // Обрізаємо час, залишаємо YYYY-MM-DD
-  form.category_id = tx.category_id;
-  form.description = tx.notes; // На бекенді notes, на фронті description
-  
-  // Валютна логіка
-  form.isZed = tx.is_foreign_currency;
-  form.currency = tx.currency_code;
-  // Якщо курс 1.0 (гривня), поле пусте, інакше показуємо курс
-  form.manual_rate = tx.exchange_rate === 1.0 ? '' : tx.exchange_rate;
-
-  isModalOpen.value = true;
-};
-
 // Відправка форми (Створення або Редагування)
 const submitTransaction = async () => {
   if (form.amount <= 0) { alert("Сума має бути більше 0"); return; }
@@ -161,6 +140,61 @@ const getCategoryName = (id) => {
   const all = store.categories.all || [];
   const found = all.find(c => c.id === id);
   return found ? found.name : '...';
+};
+
+// Додаємо змінну, щоб зберігати початковий тип при редагуванні
+const originalEditingType = ref(null);
+
+// --- Оновлена функція відкриття модалки РЕДАГУВАННЯ ---
+const openEditModal = (tx) => {
+  editingTxId.value = tx.transaction_id;
+  
+  // Запам'ятовуємо початковий тип для перевірки змін
+  originalEditingType.value = tx.transaction_type; 
+
+  form.type = tx.transaction_type;
+  // Якщо є оригінальна сума, беремо її, інакше суму в гривні
+  form.amount = tx.amount_original || tx.transaction_amount; 
+  form.date = tx.transaction_date.split('T')[0]; 
+  form.category_id = tx.category_id;
+  form.description = tx.notes;
+  
+  // Логіка валют
+  form.isZed = tx.is_foreign_currency;
+  form.currency = tx.currency_code;
+  // Якщо курс був збережений, показуємо його. Якщо 1.0 (UAH) — пусто
+  form.manual_rate = tx.exchange_rate === 1.0 ? '' : tx.exchange_rate;
+
+  isModalOpen.value = true;
+};
+
+// --- Нова функція для безпечної зміни ТИПУ ---
+const handleTypeChange = (newType) => {
+  // Якщо ми в режимі редагування і тип відрізняється від початкового
+  if (editingTxId.value && newType !== originalEditingType.value) {
+    const confirmed = confirm(
+      `Ви змінюєте тип транзакції з "${originalEditingType.value === 'income' ? 'Дохід' : 'Витрата'}" на "${newType === 'income' ? 'Дохід' : 'Витрата'}".\nЦе може вплинути на статистику. Продовжити?`
+    );
+    
+    if (!confirmed) {
+      // Якщо відміна - повертаємо старе значення (радіо-кнопка візуально не перемкнеться)
+      // Нам доведеться примусово оновити form.type назад, Vue це відпрацює
+      // Невеликий хак з nextTick міг би бути потрібен, але тут реактивність спрацює
+      form.type = originalEditingType.value; 
+      return;
+    }
+  }
+
+  // Якщо це не редагування або користувач підтвердив:
+  form.type = newType;
+  
+  // ВАЖЛИВО: Скидаємо категорію, бо набір категорій змінився
+  form.category_id = '';
+  
+  // Авто-вибір першої доступної категорії для зручності
+  if (availableCategories.value.length > 0) {
+    form.category_id = availableCategories.value[0].id;
+  }
 };
 </script>
 
@@ -243,12 +277,8 @@ const getCategoryName = (id) => {
       <form @submit.prevent="submitTransaction" class="tx-form">
         
         <div class="form-group toggle-group">
-          <label class="toggle-btn" :class="{ active: form.type === 'expense' }">
-            <input type="radio" value="expense" v-model="form.type" hidden> Витрата
-          </label>
-          <label class="toggle-btn" :class="{ active: form.type === 'income' }">
-            <input type="radio" value="income" v-model="form.type" hidden> Дохід
-          </label>
+        <label class="toggle-btn":class="{ active: form.type === 'expense' }" @click.prevent="handleTypeChange('expense')">Витрата</label>
+        <label class="toggle-btn":class="{ active: form.type === 'income' }" @click.prevent="handleTypeChange('income')">Дохід</label>
         </div>
 
         <div class="row">

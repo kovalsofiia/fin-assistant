@@ -174,25 +174,32 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
         final_amount_uah = old_data['transaction_amount']
         final_rate = old_data['exchange_rate']
         final_amount_original = old_data['amount_original']
-
+        
         if needs_recalc:
-            # Логіка розрахунку (така ж як в create)
+            # Логіка розрахунку
             if new_currency != "UAH":
+                # 1. Якщо користувач явно ввів новий курс вручну — беремо його
                 if new_manual_rate and new_manual_rate > 0:
                     final_rate = new_manual_rate
+                
+                # 2. ПОКРАЩЕННЯ: Якщо валюта не змінилась і дата не змінилась — 
+                # залишаємо той курс, що вже був у базі (навіть якщо він ручний)
+                elif new_currency == old_data['currency_code'] and new_date.isoformat() == old_data['transaction_date']:
+                    final_rate = old_data['exchange_rate']
+                
+                # 3. В іншому випадку (змінилась валюта або дата) — тягнемо свіжий НБУ
                 else:
-                    # Якщо валюта/дата змінилась, а курс вручну не дали - питаємо НБУ
-                    # АЛЕ: Якщо дата і валюта НЕ змінились, а змінилась тільки сума - можна залишити старий курс?
-                    # Для надійності краще завжди тягнути актуальний курс НБУ на цю дату.
                     nbu_rate = get_nbu_rate(new_currency, new_date)
                     if nbu_rate == 0:
-                         raise HTTPException(status_code=400, detail="Не вдалося отримати курс НБУ для перерахунку.")
+                         raise HTTPException(status_code=400, detail="НБУ не відповідає. Введіть курс вручну.")
                     final_rate = nbu_rate
                 
                 final_amount_uah = new_amount * final_rate
                 final_amount_original = new_amount
+
             else:
-                # Якщо стала гривня
+                # Якщо стала гривня (або була гривня)
+                # Ця частина у вас ідеальна — ми зачищаємо валютні "хвости"
                 final_amount_uah = new_amount
                 final_rate = 1.0
                 final_amount_original = None
