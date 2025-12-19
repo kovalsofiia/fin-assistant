@@ -57,15 +57,13 @@ const availableCategories = computed(() => {
 
 // --- Дії (Actions) ---
 
-// Відкрити модалку для СТВОРЕННЯ
 const openCreateModal = () => {
   editingTxId.value = null; // Режим створення
   Object.assign(form, initialFormState); // Скидаємо форму до початкового стану
   
-  // Автоматично вибираємо першу категорію зі списку, щоб поле не було пустим
-  if (availableCategories.value.length > 0) {
-    form.category_id = availableCategories.value[0].id;
-  }
+  // ЗАМІНА: Замість простого вибору, викликаємо нашу нову функцію авто-підбору
+  setTimeout(() => autoSelectCategory(), 10);
+
   isModalOpen.value = true;
 };
 
@@ -196,6 +194,51 @@ const handleTypeChange = (newType) => {
     form.category_id = availableCategories.value[0].id;
   }
 };
+
+// Нова логіка авто-категорій
+const autoSelectCategory = () => {
+  const list = availableCategories.value;
+  
+  // Якщо категорії ще не завантажились — нічого не робимо
+  if (!list || list.length === 0) return;
+
+  // Логіка працює тільки для типу "income" (Дохід)
+  if (form.type === 'income') {
+    // 1. Визначаємо ключове слово на основі галочки "Валютний дохід"
+    // Якщо form.isZed = true (галочка стоїть) -> шукаємо "ЗЕД"
+    // Якщо form.isZed = false (галочка не стоїть) -> шукаємо "Гривня"
+    const searchKey = form.isZed ? 'ЗЕД' : 'Гривня'; 
+    
+    // 2. Шукаємо категорію в списку, яка містить це слово (ігноруємо регістр літер)
+    // Це знайде ваші категорії: "Дохід від ЗЕД (Валюта)" або "Дохід (Гривня)"
+    const found = list.find(c => c.name.toLowerCase().includes(searchKey.toLowerCase()));
+
+    if (found) {
+      form.category_id = found.id;
+    } else {
+      // Якщо раптом категорію не знайшли, але нічого не вибрано — ставимо першу зі списку
+      if (!form.category_id) form.category_id = list[0].id;
+    }
+  } else {
+    // Для ВИТРАТ (expense):
+    // Якщо категорія не обрана, вибираємо першу доступну зі списку витрат
+    if (!form.category_id && list.length > 0) {
+      form.category_id = list[0].id;
+    }
+  }
+};
+
+// Слідкуємо за галочкою "Валютний дохід". 
+// Як тільки користувач її натискає — міняємо категорію.
+watch(() => form.isZed, () => {
+  autoSelectCategory();
+});
+
+// Слідкуємо за зміною типу транзакції (Дохід <-> Витрата).
+watch(() => form.type, () => {
+  // setTimeout потрібен, щоб Vue встиг оновити список availableCategories
+  setTimeout(() => autoSelectCategory(), 10);
+});
 </script>
 
 <template>
