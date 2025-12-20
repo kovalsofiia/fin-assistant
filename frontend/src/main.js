@@ -1,11 +1,14 @@
-import { createApp } from 'vue';
-import { createPinia } from 'pinia'; // Імпорт Pinia
-import App from './App.vue';
-import router from './router'; // Імпорт нашого роутера
+import { createApp } from 'vue'
+import { createPinia } from 'pinia' // якщо використовуєте pinia
+import App from './App.vue'
+import router from './router'
 
-const app = createApp(App);
+// ДОДАЙТЕ ЦЕЙ РЯДОК (шлях має відповідати розташуванню файлу)
+import './assets/main.css' 
 
-app.use(createPinia()); // Підключаємо Store
-app.use(router);        // Підключаємо Router
+const app = createApp(App)
 
-app.mount('#app');
+app.use(createPinia())
+app.use(router)
+
+app.mount('#app')

@@ -16,11 +16,40 @@ export const useTransactionStore = defineStore('transactions', {
       totalExpense: 0,
       netProfit: 0
     },
+    lifetimeSummary: {
+      totalIncome: 0,
+      totalExpense: 0,
+      balance: 0,
+      monthsCount: 0
+    },
     isLoading: false,
     error: null
   }),
 
   actions: {
+    // Допоміжна функція для отримання меж місяця
+    getMonthRange(year, month) {
+      const start = new Date(year, month, 1);
+      const end = new Date(year, month + 1, 0);
+
+      const formatDate = (date) => {
+        const d = new Date(date);
+        let month = '' + (d.getMonth() + 1);
+        let day = '' + d.getDate();
+        const year = d.getFullYear();
+
+        if (month.length < 2) month = '0' + month;
+        if (day.length < 2) day = '0' + day;
+
+        return [year, month, day].join('-');
+      };
+
+      return {
+        start: formatDate(start),
+        end: formatDate(end)
+      };
+    },
+
     // Отримання даних з урахуванням фільтрів
     async fetchTransactions() {
       this.isLoading = true;
@@ -35,7 +64,7 @@ export const useTransactionStore = defineStore('transactions', {
 
         const txRes = await api.getTransactions(user.id, params);
         this.transactions = txRes.data;
-        
+
         // Перераховуємо суми (тільки для відображених транзакцій)
         this.calculateSummary();
       } catch (e) {
@@ -43,6 +72,21 @@ export const useTransactionStore = defineStore('transactions', {
         this.error = "Не вдалося завантажити транзакції";
       } finally {
         this.isLoading = false;
+      }
+    },
+
+    async fetchLifetimeSummary() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const params = {};
+        if (this.filters.endDate) params.end_date = this.filters.endDate;
+
+        const summaryRes = await api.getTransactionSummary(user.id, params);
+        this.lifetimeSummary = summaryRes.data;
+      } catch (e) {
+        console.error("Error fetching lifetime summary:", e);
       }
     },
 
@@ -54,7 +98,11 @@ export const useTransactionStore = defineStore('transactions', {
     },
 
     async fetchInitialData() {
-      await Promise.all([this.fetchTransactions(), this.fetchCategories()]);
+      await Promise.all([
+        this.fetchTransactions(),
+        this.fetchCategories(),
+        this.fetchLifetimeSummary()
+      ]);
     },
 
     calculateSummary() {
@@ -72,7 +120,7 @@ export const useTransactionStore = defineStore('transactions', {
 
     async addTransaction(txData) {
       await api.createTransaction(txData);
-      await this.fetchTransactions(); 
+      await this.fetchTransactions();
     },
 
     async editTransaction(txId, userId, patchData) {
@@ -92,7 +140,7 @@ export const useTransactionStore = defineStore('transactions', {
       await api.createCategory(categoryData);
       await this.fetchCategories(); // Оновлюємо список категорій
     },
-    
+
     async removeCategory(catId, userId) {
       await api.deleteCategory(catId, userId);
       await this.fetchCategories();

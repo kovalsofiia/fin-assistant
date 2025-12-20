@@ -1,4 +1,6 @@
 <script setup>
+import { X } from 'lucide-vue-next';
+
 defineProps({
   isOpen: {
     type: Boolean,
@@ -19,62 +21,39 @@ const close = () => {
 
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="modal-backdrop" @click.self="close">
-      <div class="modal-content">
-        <header class="modal-header">
-          <h3>{{ title }}</h3>
-          <button class="close-btn" @click="close">×</button>
-        </header>
-        
-        <div class="modal-body">
-          <slot></slot>
+    <transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm" @click.self="close">
+        <div class="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl shadow-blue-900/10 overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]">
+          <header class="px-8 py-6 border-b border-gray-50 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10">
+            <h3 class="text-xl font-black text-gray-900 tracking-tight">{{ title }}</h3>
+            <button 
+              class="p-2 hover:bg-gray-100 rounded-2xl text-gray-400 hover:text-gray-900 transition-all active:scale-95" 
+              @click="close"
+            >
+              <X :size="24" stroke-width="3" />
+            </button>
+          </header>
+          
+          <div class="p-8 overflow-y-auto">
+            <slot></slot>
+          </div>
+          
+          <footer class="px-8 py-6 border-t border-gray-50 flex justify-end gap-3 bg-gray-50/50" v-if="$slots.footer">
+            <slot name="footer"></slot>
+          </footer>
         </div>
-        
-        <footer class="modal-footer" v-if="$slots.footer">
-          <slot name="footer"></slot>
-        </footer>
       </div>
-    </div>
+    </transition>
   </Teleport>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 500px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-  max-height: 90vh;
-}
-
-.modal-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-header h3 { margin: 0; color: #1E293B; }
-
-.close-btn {
-  background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #64748B;
-}
-
-.modal-body { padding: 20px; overflow-y: auto; }
-.modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+/* No extra scoped CSS needed thanks to Tailwind and Transition */
 </style>

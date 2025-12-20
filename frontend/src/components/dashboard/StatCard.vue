@@ -1,4 +1,6 @@
 <script setup>
+import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
+
 defineProps({
   title: {
     type: String,
@@ -12,7 +14,7 @@ defineProps({
     type: String,
     default: ''
   },
-  // Варіанти: 'primary' (синій фон), 'white' (білий фон)
+  // Варіанти: 'primary' (синій градієнт), 'white' (білий фон)
   variant: {
     type: String,
     default: 'white'
@@ -21,79 +23,60 @@ defineProps({
   amountColor: {
     type: String,
     default: 'default'
+  },
+  loading: {
+    type: Boolean,
+    default: false
   }
 });
 </script>
 
 <template>
-  <div class="stat-card" :class="variant">
-    <h3>{{ title }}</h3>
+  <div 
+    class="rounded-xl shadow-sm p-6 transition-transform hover:-translate-y-0.5 duration-200 flex flex-col justify-center h-full"
+    :class="[
+      variant === 'primary' 
+        ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none' 
+        : 'bg-white border border-gray-100 text-gray-800'
+    ]"
+  >
+    <!-- Заголовок -->
+    <h3 
+      class="text-sm font-medium uppercase tracking-wide mb-1"
+      :class="variant === 'primary' ? 'text-blue-100' : 'text-gray-500'"
+    >
+      {{ title }}
+    </h3>
+
+    <!-- Сума -->
+    <div v-if="loading" class="mt-2 mb-1">
+      <SkeletonLoader 
+        width="140px" 
+        height="36px" 
+        :borderRadius="variant === 'primary' ? '12px' : '10px'"
+        :className="variant === 'primary' ? 'bg-white/20' : 'bg-gray-100'"
+      />
+    </div>
     <p 
-      class="amount"
+      v-else
+      class="text-3xl font-bold mt-1"
       :class="{
-        'text-blue': variant === 'white' && amountColor === 'blue',
-        'text-red': variant === 'white' && amountColor === 'red'
+        'text-blue-600': variant === 'white' && amountColor === 'blue',
+        'text-red-500': variant === 'white' && amountColor === 'red',
+        'text-gray-900': variant === 'white' && amountColor === 'default',
+        'text-white': variant === 'primary'
       }"
     >
       {{ amount }}
     </p>
-    <span v-if="subtext" class="subtext">{{ subtext }}</span>
+
+    <!-- Підтекст -->
+    <span 
+      v-if="subtext" 
+      class="text-sm mt-2 block"
+      :class="variant === 'primary' ? 'text-blue-200' : 'text-gray-400'"
+    >
+      {{ subtext }}
+    </span>
   </div>
 </template>
-
-<style scoped>
-.stat-card {
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-}
-
-.stat-card h3 {
-  margin: 0 0 10px 0;
-  font-size: 0.9em;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
-}
-
-.amount {
-  font-size: 1.8em;
-  font-weight: bold;
-  margin: 0;
-}
-
-.subtext {
-  font-size: 0.8em;
-  margin-top: 5px;
-  opacity: 0.8;
-}
-
-/* Варіант Primary (Синій) */
-.primary {
-  background: linear-gradient(135deg, #2563EB 0%, #1E40AF 100%);
-  color: white;
-}
-.primary h3 { opacity: 0.9; }
-.primary .subtext { color: #DBEAFE; }
-
-/* Варіант White (Білий) */
-.white {
-  background: white;
-  border: 1px solid #E2E8F0;
-  color: #1E293B;
-}
-.white h3 { color: #64748B; }
-
-/* Кольори тексту для білих карток */
-.text-blue { color: #2563EB; }
-.text-red { color: #EF4444; }
-</style>

@@ -12,15 +12,17 @@ const api = axios.create({
 export default {
   // --- ТРАНЗАКЦІЇ ---
   getTransactions(userId, params = {}) {
-    // params: { limit, offset, start_date, end_date, type }
     return api.get('/transactions', { params: { user_id: userId, ...params } });
+  },
+  getTransactionSummary(userId, params = {}) {
+    return api.get('/transactions/summary', { params: { user_id: userId, ...params } });
   },
   createTransaction(data) {
     return api.post('/transactions', data);
   },
   deleteTransaction(transactionId, userId) {
-    return api.delete(`/transactions/${transactionId}`, { 
-      params: { user_id: userId } 
+    return api.delete(`/transactions/${transactionId}`, {
+      params: { user_id: userId }
     });
   },
   patchTransaction(transactionId, userId, data) {
@@ -62,5 +64,12 @@ export default {
   },
   updateFopSettings(userId, data) {
     return api.patch(`/settings/${userId}`, data);
-  }
+  },
+
+  // === ДОДАЙТЕ ЦІ РЯДКИ, ЩОБ ВИПРАВИТИ ПОМИЛКУ ===
+  // Дозволяє викликати api.get, api.post, api.patch напряму з компонентів
+  get: (url, config) => api.get(url, config),
+  post: (url, data, config) => api.post(url, data, config),
+  patch: (url, data, config) => api.patch(url, data, config), // <--- Це виправить помилку
+  delete: (url, config) => api.delete(url, config),
 };

@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { supabase } from '@/supabase';
 import api from '@/api';
+import { Wallet, AlertCircle, Loader2 } from 'lucide-vue-next';
 
 const router = useRouter();
 const isLoginMode = ref(true); // Перемикач Вхід / Реєстрація
@@ -18,18 +19,13 @@ const handleAuth = async () => {
 
   try {
     if (isLoginMode.value) {
-      // --- ЛОГІКА ВХОДУ ---
       const { error } = await supabase.auth.signInWithPassword({
         email: email.value,
         password: password.value
       });
       if (error) throw error;
-      
-      // Успішний вхід -> йдемо в Налаштування (або Dashboard)
-      router.push('/settings');
-
+      router.push('/dashboard');
     } else {
-      // --- ЛОГІКА РЕЄСТРАЦІЇ ---
       const { data, error } = await supabase.auth.signUp({
         email: email.value,
         password: password.value,
@@ -39,20 +35,23 @@ const handleAuth = async () => {
       if (error) throw error;
       if (!data.user) throw new Error("Не вдалося створити користувача");
 
-      // 1. Створюємо "пустий" профіль у базі
-      // За замовчуванням is_fop = false (змінимо це на онбордингу)
-      await api.createProfile({
-        user_id: data.user.id,
-        is_fop: false, 
-        full_name: fullName.value
-      });
+      try {
+        await api.createProfile({
+          user_id: data.user.id,
+          is_fop: false, 
+          full_name: fullName.value
+        });
+      } catch (profileError) {
+        console.error("Profile creation error:", profileError);
+      }
 
-      // 2. Нового юзера ведемо на Онбординг
       router.push('/onboarding');
     }
   } catch (e) {
     console.error(e);
-    errorMsg.value = e.message || "Помилка авторизації";
+    errorMsg.value = e.message === "Invalid login credentials" 
+      ? "Невірний email або пароль" 
+      : (e.message || "Помилка авторизації");
   } finally {
     isLoading.value = false;
   }
@@ -60,55 +59,104 @@ const handleAuth = async () => {
 </script>
 
 <template>
-  <div class="auth-container">
-    <div class="auth-card">
-      <h1>{{ isLoginMode ? 'Вхід' : 'Реєстрація' }}</h1>
-      <p class="subtitle">FOP Assistant</p>
+  <div class="min-h-screen flex items-center justify-center p-4 bg-gray-50 font-sans">
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 animate-slide-up border border-gray-100">
+      <!-- Logo Section -->
+      <div class="flex flex-col items-center mb-10">
+        <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-200 mb-6 animate-bounce-slow">
+          <Wallet :size="32" stroke-width="2.5" />
+        </div>
+        <h1 class="text-3xl font-black text-gray-900 tracking-tight">FOP Assistant</h1>
+        <p class="text-gray-500 font-medium mt-2">
+          {{ isLoginMode ? 'Вхід в особистий кабінет' : 'Створіть свій профіль' }}
+        </p>
+      </div>
 
-      <form @submit.prevent="handleAuth">
-        
-        <div v-if="!isLoginMode" class="form-group">
-          <label>Ваше ім'я</label>
-          <input type="text" v-model="fullName" required placeholder="Тарас" />
+      <form @submit.prevent="handleAuth" class="space-y-6">
+        <!-- Name Field (Registration only) -->
+        <div v-if="!isLoginMode" class="space-y-1">
+          <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Ваше ім'я</label>
+          <input 
+            type="text" 
+            v-model="fullName" 
+            required 
+            placeholder="Тарас Шевченко" 
+            class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300"
+          />
         </div>
 
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" v-model="email" required placeholder="email@example.com" />
+        <div class="space-y-1">
+          <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Email</label>
+          <input 
+            type="email" 
+            v-model="email" 
+            required 
+            placeholder="email@example.com" 
+            class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300"
+          />
         </div>
 
-        <div class="form-group">
-          <label>Пароль</label>
-          <input type="password" v-model="password" required placeholder="********" minlength="6" />
+        <div class="space-y-1">
+          <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Пароль</label>
+          <input 
+            type="password" 
+            v-model="password" 
+            required 
+            placeholder="********" 
+            minlength="6" 
+            class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800 placeholder:text-gray-300"
+          />
         </div>
 
-        <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
+        <!-- Error Block -->
+        <transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0">
+          <div v-if="errorMsg" class="p-4 bg-red-50 text-red-700 text-sm font-bold rounded-2xl flex items-center gap-3 border border-red-100">
+            <AlertCircle :size="18" stroke-width="3" /> 
+            <span>{{ errorMsg }}</span>
+          </div>
+        </transition>
 
-        <button type="submit" :disabled="isLoading" class="btn-primary">
-          {{ isLoading ? 'Зачекайте...' : (isLoginMode ? 'Увійти' : 'Зареєструватися') }}
+        <!-- Action Button -->
+        <button 
+          type="submit" 
+          :disabled="isLoading" 
+          class="w-full py-5 rounded-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-3 transition-all shadow-xl shadow-blue-200 active:scale-[0.98] mt-4"
+        >
+          <Loader2 v-if="isLoading" class="animate-spin" :size="20" />
+          {{ isLoading ? 'Завантаження...' : (isLoginMode ? 'Увійти' : 'Зареєструватися') }}
         </button>
       </form>
 
-      <p class="toggle-text">
-        {{ isLoginMode ? "Ще не маєте акаунту?" : "Вже зареєстровані?" }}
-        <span @click="isLoginMode = !isLoginMode" class="link">
-          {{ isLoginMode ? "Створити акаунт" : "Увійти" }}
-        </span>
-      </p>
+      <!-- Toggle Mode -->
+      <div class="mt-10 text-center border-t border-gray-100 pt-8">
+        <p class="text-gray-500 font-medium">
+          {{ isLoginMode ? "Ще не маєте акаунту?" : "Вже зареєстровані?" }}
+          <button 
+            @click="isLoginMode = !isLoginMode; errorMsg = ''" 
+            class="text-blue-600 font-black hover:text-blue-800 transition-colors ml-2 focus:outline-none underline underline-offset-4 decoration-2 decoration-blue-100 hover:decoration-blue-600"
+          >
+            {{ isLoginMode ? "Зареєструватися" : "Увійти" }}
+          </button>
+        </p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.auth-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f0f2f5; }
-.auth-card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-.form-group { margin-bottom: 1rem; text-align: left; }
-.form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
-input { width: 100%; padding: 0.75rem; border: 1px solid #ccc; border-radius: 6px; }
-.btn-primary { width: 100%; padding: 0.75rem; background: #4CAF50; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; margin-top: 1rem; }
-.btn-primary:disabled { background: #a5d6a7; }
-.error { color: red; margin-top: 10px; font-size: 0.9rem; }
-.toggle-text { margin-top: 1.5rem; font-size: 0.9rem; }
-.link { color: #4CAF50; cursor: pointer; font-weight: bold; }
-.link:hover { text-decoration: underline; }
+.animate-slide-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.animate-bounce-slow { animation: bounceSlow 3s infinite; }
+@keyframes bounceSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+.loader {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 2px solid #ffffff;
+    width: 20px;
+    height: 20px;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>

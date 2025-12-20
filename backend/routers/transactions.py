@@ -99,6 +99,56 @@ def get_transactions(
     except Exception as e:
         print(f"Error fetching transactions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/summary")
+def get_transaction_summary(
+    user_id: str,
+    end_date: Optional[date_type] = None
+):
+    """
+    Повертає агреговану статистику (дохід, витрати, баланс).
+    Якщо передати end_date, рахує все від початку часів до цієї дати.
+    """
+    try:
+        # Використовуємо rpc або просто витягуємо суми через select
+        # Для простоти на Supabase Python SDK ми можемо додати .sum() 
+        # але нативне SDK не завжди це підтримує зручно без RPC.
+        # Тому просто витягнемо необхідні поля і просумуємо.
+        # (У реальному проекті краще мати RPC функцію в Postgres).
+        
+        query = supabase.table("transactions")\
+            .select("transaction_amount, transaction_type, transaction_date")\
+            .eq("user_id", user_id)
+        
+        if end_date:
+            query = query.lte("transaction_date", end_date.isoformat())
+
+        response = query.execute()
+        
+        income = 0.0
+        expense = 0.0
+        months = set()
+        
+        for tx in response.data:
+            amount = float(tx["transaction_amount"])
+            date_str = tx.get("transaction_date", "")
+            if date_str:
+                months.add(date_str[:7])
+
+            if tx["transaction_type"] == "income":
+                income += amount
+            else:
+                expense += amount
+        
+        return {
+            "totalIncome": round(income, 2),
+            "totalExpense": round(expense, 2),
+            "balance": round(income - expense, 2),
+            "monthsCount": len(months)
+        }
+    except Exception as e:
+        print(f"Summary Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.delete("/{transaction_id}")
 def delete_transaction(transaction_id: str, user_id: str):
@@ -155,44 +205,43 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
         old_data = existing_response.data[0]
 
         # 2. Визначаємо нові значення (або беремо старі, якщо нові не передані)
-        # Це логіка злиття (Merge)
+        # Отримуємо тільки ті поля, які були реально в JSON запиті
+        patch_fields = patch.dict(exclude_unset=True)
+        
         new_amount = patch.amount if patch.amount is not None else old_data['amount_original'] or old_data['transaction_amount']
         new_date = patch.date if patch.date is not None else date_type.fromisoformat(old_data['transaction_date'])
         new_currency = patch.currency if patch.currency is not None else old_data['currency_code']
-        # Якщо передали manual_rate, беремо його, інакше - None (щоб спрацювала логіка НБУ або старий курс)
-        new_manual_rate = patch.manual_rate 
+        # manual_rate сюди потрапить тільки якщо він був у patch_fields
+        provided_manual_rate = patch_fields.get('manual_rate')
 
         # 3. Перевіряємо, чи треба перераховувати фінанси
-        # Перерахунок потрібен, якщо змінилося хоч одне з фінансових полів
-        needs_recalc = (
-            (patch.amount is not None) or 
-            (patch.date is not None) or 
-            (patch.currency is not None) or
-            (patch.manual_rate is not None)
-        )
+        needs_recalc = any(f in patch_fields for f in ['amount', 'date', 'currency', 'manual_rate'])
 
         final_amount_uah = old_data['transaction_amount']
         final_rate = old_data['exchange_rate']
         final_amount_original = old_data['amount_original']
         
         if needs_recalc:
-            # Логіка розрахунку
             if new_currency != "UAH":
-                # 1. Якщо користувач явно ввів новий курс вручну — беремо його
-                if new_manual_rate and new_manual_rate > 0:
-                    final_rate = new_manual_rate
+                # 1. Якщо користувач передав курс і він > 0 — використовуємо його
+                if provided_manual_rate and provided_manual_rate > 0:
+                    final_rate = provided_manual_rate
                 
-                # 2. ПОКРАЩЕННЯ: Якщо валюта не змінилась і дата не змінилась — 
-                # залишаємо той курс, що вже був у базі (навіть якщо він ручний)
-                elif new_currency == old_data['currency_code'] and new_date.isoformat() == old_data['transaction_date']:
-                    final_rate = old_data['exchange_rate']
-                
-                # 3. В іншому випадку (змінилась валюта або дата) — тягнемо свіжий НБУ
-                else:
+                # 2. Якщо користувач ЯВНО передав порожній курс (null або 0) — тягнемо НБУ
+                # або якщо змінилась валюта чи дата — також тягнемо НБУ
+                elif ('manual_rate' in patch_fields and not provided_manual_rate) or \
+                     new_currency != old_data['currency_code'] or \
+                     new_date.isoformat() != old_data['transaction_date']:
+                    
                     nbu_rate = get_nbu_rate(new_currency, new_date)
                     if nbu_rate == 0:
                          raise HTTPException(status_code=400, detail="НБУ не відповідає. Введіть курс вручну.")
                     final_rate = nbu_rate
+                
+                # 3. В іншому випадку (наприклад, змінили тільки опис або суму без зміни курсу/дати) 
+                # — залишаємо старий курс
+                else:
+                    final_rate = old_data['exchange_rate']
                 
                 final_amount_uah = new_amount * final_rate
                 final_amount_original = new_amount

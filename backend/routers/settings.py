@@ -19,7 +19,7 @@ def get_fop_settings(user_id: str):
                 "user_id": user_id,
                 "fop_group": 3,
                 "income_tax_percent": 5.0,
-                "military_tax_percent": 1.5,
+                "military_tax_percent": 1,
                 "esv_value": 1760.0,
                 "is_zed": False
             }
