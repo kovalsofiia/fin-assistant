@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import transactions, categories, profiles, settings
+from routers import transactions, categories, profiles, settings, tax
 
 app = FastAPI(title="FOP Assistant API 🇺🇦")
 
@@ -28,3 +28,4 @@ app.include_router(transactions.router)
 app.include_router(categories.router)
 app.include_router(profiles.router)
 app.include_router(settings.router)
+app.include_router(tax.router)

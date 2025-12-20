@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, computed, ref } from 'vue';
+import { onMounted, computed, ref, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
 import api from '@/api';
 import { supabase } from '@/supabase';
@@ -11,13 +11,16 @@ import { APP_CONSTANTS } from '@/constants/appConstants'; // Переконай�
 import StatCard from '@/components/dashboard/StatCard.vue';
 import TaxWidget from '@/components/dashboard/TaxWidget.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
-import { ArrowDownLeft, ArrowUpRight, Calculator, Info } from 'lucide-vue-next';
+import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock } from 'lucide-vue-next';
 
 const txStore = useTransactionStore();
 const settings = ref(null);
 const profile = ref(null);
 const userId = ref(null);
 const isPageLoading = ref(true);
+const taxData = ref(null);
+const taxWarnings = ref([]);
+const paymentCalendar = ref([]);
 
 // Фільтрація періоду
 const currentDate = new Date();
@@ -38,9 +41,9 @@ onMounted(async () => {
   if (user) {
     userId.value = user.id;
     
-    setInitialPeriod();
-
     try {
+      setInitialPeriod();
+
       // Завантажуємо все паралельно для швидкості
       const [profileRes] = await Promise.all([
         api.getProfile(user.id),
@@ -49,20 +52,39 @@ onMounted(async () => {
       
       profile.value = profileRes.data;
 
-      // Якщо ФОП - тягнемо налаштування
+      // Якщо ФОП - тягнемо налаштування та розрахунок податків
       if (profile.value?.is_fop) {
         const settingsRes = await api.getFopSettings(user.id);
         settings.value = settingsRes.data;
+        await fetchTaxAnalysis();
       }
     } catch (e) {
       console.error("Dashboard load error:", e);
       if (!profile.value) profile.value = { is_fop: true };
-      if (!settings.value) settings.value = { income_tax_percent: 5, military_tax_percent: 1.5, esv_value: 1760 };
     } finally {
       isPageLoading.value = false;
     }
   }
 });
+
+const fetchTaxAnalysis = async () => {
+  if (!userId.value) return;
+  try {
+    const res = await api.get(`/tax/calculate`, {
+      params: {
+        user_id: userId.value,
+        annual_income: txStore.lifetimeSummary.totalIncome || 0,
+        monthly_income: txStore.summary.totalIncome || 0,
+        period: selectedPeriodType.value === 'month' ? 'month' : 'quarter'
+      }
+    });
+    taxData.value = res.data.taxes;
+    taxWarnings.value = res.data.warnings;
+    paymentCalendar.value = res.data.calendar;
+  } catch (e) {
+    console.error("Tax Calculation error:", e);
+  }
+};
 
 // Зміна місяця
 const changeMonth = async (delta) => {
@@ -82,55 +104,70 @@ const changeMonth = async (delta) => {
   
   await Promise.all([
     txStore.fetchTransactions(),
-    txStore.fetchLifetimeSummary()
+    txStore.fetchLifetimeSummary(),
+    profile.value?.is_fop ? fetchTaxAnalysis() : Promise.resolve()
   ]);
   isPageLoading.value = false;
 };
+
+// Реактивність: перераховуємо податки при зміні доходу
+watch(() => txStore.summary.totalIncome, () => {
+  if (profile.value?.is_fop) fetchTaxAnalysis();
+});
 
 const monthName = computed(() => {
   return new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(new Date(currentYear.value, currentMonth.value));
 });
 
-// Обчислення податків на льоту
+// Обчислення податків на основі даних з API
 const taxCalculations = computed(() => {
-  if (!profile.value?.is_fop || !settings.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
-
-  const income = txStore.summary.totalIncome;
+  if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
   
-  // 1. Єдиний податок (напр. 5%)
-  const ep = income * (settings.value.income_tax_percent / 100);
-  
-  // 2. ВЗ
-  const vz = income * (settings.value.military_tax_percent / 100);
-  
-  // 3. ЄСВ (фіксований)
-  const esv = settings.value.esv_value; 
-
   return {
-    ep: ep,
-    vz: vz,
-    esv: esv,
-    total: ep + vz + esv
+    ep: taxData.value.single_tax,
+    vz: taxData.value.military_tax,
+    esv: taxData.value.esv,
+    total: taxData.value.total_monthly_tax
   };
 });
 
 // Реальний баланс за весь час (Після податків)
+// Використовуємо дані з API для точності
 const realBalance = computed(() => {
   const grossBalance = txStore.lifetimeSummary.balance;
-  if (!profile.value?.is_fop || !settings.value) return grossBalance;
+  if (!profile.value?.is_fop || !taxData.value) return grossBalance;
 
-  const totalIncome = txStore.lifetimeSummary.totalIncome;
-  const ep = totalIncome * (settings.value.income_tax_percent / 100);
-  const vz = totalIncome * (settings.value.military_tax_percent / 100);
-  const esv = (txStore.lifetimeSummary.monthsCount || 1) * settings.value.esv_value;
+  // Рахуємо податки за весь період діяльності
+  const monthsCount = txStore.lifetimeSummary.monthsCount || 1;
+  const totalIncome = txStore.lifetimeSummary.totalIncome || 0;
+  
+  const tax = APP_CONSTANTS.TAX_2025;
+  let ep = 0;
+  let vz = 0;
+  const esv = monthsCount * tax.ESV_MONTHLY;
+
+  if (settings.value?.fop_group === 3) {
+    const rate = settings.value?.is_vat_payer ? tax.GROUP_3_RATE_VAT : tax.GROUP_3_RATE;
+    ep = totalIncome * rate;
+    vz = totalIncome * tax.GROUP_3_MILITARY_RATE;
+  } else if (settings.value?.fop_group === 4) {
+    // В спрощеному варіанті для G4 рахуємо фіксований ВЗ
+    ep = monthsCount * 0; // Спрощено, бо G4 залежить від оцінки землі
+    vz = monthsCount * tax.FIXED_MILITARY_TAX;
+  } else {
+    // Для груп 1, 2
+    const singleTaxRate = settings.value?.fop_group === 1 ? tax.SINGLE_TAX_G1 : tax.SINGLE_TAX_G2;
+    ep = monthsCount * singleTaxRate;
+    vz = monthsCount * tax.FIXED_MILITARY_TAX;
+  }
 
   return grossBalance - (ep + vz + esv);
 });
 
-// Чистий дохід після податків
+// Чистий дохід після податків (поточний період)
 const realProfit = computed(() => {
-  if (!profile.value?.is_fop) return txStore.summary.netProfit;
-  return txStore.summary.netProfit - taxCalculations.value.total;
+  if (!profile.value?.is_fop || !taxData.value) return txStore.summary.netProfit;
+  return txStore.summary.netProfit - taxData.value.total_monthly_tax;
 });
 
 // Форматування валюти
@@ -176,6 +213,21 @@ const getCategoryName = (id) => {
       </div>
     </header>
 
+    <!-- Tax Warnings -->
+    <div v-if="taxWarnings.length > 0" class="animate-slide-up space-y-3">
+      <div v-for="w in taxWarnings" :key="w" class="p-4 bg-amber-50 border-2 border-amber-100 rounded-2xl flex items-center gap-4 text-amber-900">
+        <div class="bg-amber-100 p-2 rounded-xl">
+          <Info :size="20" class="text-amber-600" />
+        </div>
+        <div class="flex-grow">
+          <p class="font-black text-sm uppercase tracking-widest" v-if="w === 'LIMIT_APPROACHING'">Наближення ліміту доходу</p>
+          <p class="font-black text-sm uppercase tracking-widest" v-else-if="w === 'VAT_REGISTRATION_REQUIRED'">Необхідна реєстрація ПДВ</p>
+          <p class="text-xs font-medium opacity-80" v-if="w === 'LIMIT_APPROACHING'">Ви використали понад 90% річного ліміту вашої групи. Стежте за наступними поступленнями.</p>
+          <p class="text-xs font-medium opacity-80" v-else-if="w === 'VAT_REGISTRATION_REQUIRED'">Річний дохід перевищив 1 млн грн. Ви повинні зареєструватися платником ПДВ.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Stats Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       <StatCard 
@@ -218,12 +270,33 @@ const getCategoryName = (id) => {
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Tax Widget Column (Only for FOP) -->
-      <div v-if="profile?.is_fop" class="lg:col-span-1">
+      <div v-if="profile?.is_fop" class="lg:col-span-1 space-y-6">
         <TaxWidget 
           :calculations="taxCalculations" 
           :settings="settings" 
           :loading="isPageLoading || !settings"
         />
+
+        <!-- Payment Calendar Widget -->
+        <div class="bg-white rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
+            <h3 class="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
+                <Clock class="w-6 h-6 text-blue-600" />
+                Календар оплат
+            </h3>
+            <div class="space-y-4">
+                <div v-for="(event, idx) in paymentCalendar" :key="idx" class="flex gap-4 p-4 rounded-2xl bg-gray-50 border border-transparent hover:border-blue-100 transition-all">
+                    <div class="w-1 h-full bg-blue-500 rounded-full"></div>
+                    <div>
+                        <p class="text-xs font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{{ event.deadline }}</p>
+                        <p class="font-black text-gray-800 leading-tight">{{ event.event }}</p>
+                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-tight mt-1">Група: {{ event.group }}</p>
+                    </div>
+                </div>
+                <div v-if="paymentCalendar.length === 0" class="text-center py-6 text-gray-400 italic text-sm">
+                    Календар завантажується...
+                </div>
+            </div>
+        </div>
       </div>
 
       <!-- Recent Transactions List Column -->

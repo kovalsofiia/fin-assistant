@@ -9,11 +9,15 @@ export const APP_CONSTANTS = {
     DANGER: '#EF4444',
   },
 
-  // Дефолтні податкові налаштування (якщо API недоступне)
-  DEFAULT_TAXES: {
-    GROUP_3_PERCENT: 5.0,
-    MILITARY_PERCENT: 1.5,
-    ESV_VALUE: 1760.0,
+  // Податкові константи 2025
+  TAX_2025: {
+    ESV_MONTHLY: 1760.0,
+    SINGLE_TAX_G1: 302.80,
+    SINGLE_TAX_G2: 1600.0,
+    FIXED_MILITARY_TAX: 800.0, // Для 1, 2, 4 груп
+    GROUP_3_RATE: 0.05,
+    GROUP_3_RATE_VAT: 0.03,
+    GROUP_3_MILITARY_RATE: 0.01,
   },
 
   // Тексти для UI
@@ -34,7 +38,7 @@ export const APP_CONSTANTS = {
     { name: 'Банківські послуги', type: 'expense' },
     { name: 'Зарплата', type: 'expense' },
   ],
-  
+
   // Обмеження
   VALIDATION: {
     MIN_AMOUNT: 0.01,

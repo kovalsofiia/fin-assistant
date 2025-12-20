@@ -21,7 +21,13 @@ def get_fop_settings(user_id: str):
                 "income_tax_percent": 5.0,
                 "military_tax_percent": 1,
                 "esv_value": 1760.0,
-                "is_zed": False
+                "is_zed": False,
+                "tax_system": "simplified",
+                "activity_type": "services",
+                "reporting_period": "quarter",
+                "has_employees": False,
+                "employees_count": 0,
+                "is_vat_payer": False
             }
             new_settings = supabase.table("fop_settings").insert(default_data).execute()
             return new_settings.data[0]

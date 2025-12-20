@@ -1,6 +1,9 @@
 <script setup>
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import { Calculator, Info } from 'lucide-vue-next';
+import { APP_CONSTANTS } from '@/constants/appConstants';
+
+const tax = APP_CONSTANTS.TAX_2025;
 
 defineProps({
   calculations: {
@@ -20,10 +23,15 @@ defineProps({
 
 <template>
   <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full flex flex-col">
-    <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-      <Calculator class="w-5 h-5 text-blue-600" />
-      Податкове зобов'язання
-    </h2>
+    <div class="flex flex-col mb-4">
+      <h2 class="text-xl font-black text-gray-900 flex items-center gap-3">
+        <Calculator class="w-6 h-6 text-indigo-600" />
+        Податковий розрахунок
+      </h2>
+      <p v-if="settings" class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">
+        ФОП {{ settings.fop_group }}-ї групи • 2025
+      </p>
+    </div>
     
     <!-- Total Block -->
     <div class="bg-blue-50 p-4 rounded-lg flex justify-between items-center mb-6 border border-blue-100">
@@ -33,32 +41,34 @@ defineProps({
     </div>
 
     <!-- Breakdown List -->
-    <div class="space-y-3 flex-1">
-      <div class="flex justify-between text-sm text-gray-600 border-b border-dashed border-gray-200 pb-2">
-        <span class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-          Єдиний податок ({{ settings?.income_tax_percent }}%)
-        </span>
-        <SkeletonLoader v-if="loading" width="70px" height="18px" className="bg-gray-100" />
-        <span v-else class="font-medium text-gray-800 font-mono">{{ (calculations.ep || 0).toFixed(2) }} ₴</span>
+    <div class="space-y-4 flex-1">
+      <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Єдиний податок</span>
+          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ settings?.income_tax_percent }}%</span>
+          <span class="text-sm font-bold text-gray-700" v-else>Фіксована ставка</span>
+        </div>
+        <SkeletonLoader v-if="loading" width="70px" height="18px" />
+        <span v-else class="font-black text-gray-900">{{ (calculations.ep || 0).toFixed(2) }} ₴</span>
       </div>
       
-      <div class="flex justify-between text-sm text-gray-600 border-b border-dashed border-gray-200 pb-2">
-        <span class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-          Військовий збір ({{ settings?.military_tax_percent }}%)
-        </span>
-        <SkeletonLoader v-if="loading" width="70px" height="18px" className="bg-gray-100" />
-        <span v-else class="font-medium text-gray-800 font-mono">{{ (calculations.vz || 0).toFixed(2) }} ₴</span>
+      <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Військовий збір</span>
+          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ tax.GROUP_3_MILITARY_RATE * 100 }}%</span>
+          <span class="text-sm font-bold text-gray-700" v-else>Фіксовано {{ tax.FIXED_MILITARY_TAX }} ₴</span>
+        </div>
+        <SkeletonLoader v-if="loading" width="70px" height="18px" />
+        <span v-else class="font-black text-gray-900">{{ (calculations.vz || 0).toFixed(2) }} ₴</span>
       </div>
       
-      <div class="flex justify-between text-sm text-gray-600 pb-2">
-        <span class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-          ЄСВ (фіксований)
-        </span>
-        <SkeletonLoader v-if="loading" width="70px" height="18px" className="bg-gray-100" />
-        <span v-else class="font-medium text-gray-800 font-mono">{{ (calculations.esv || 0).toFixed(2) }} ₴</span>
+      <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">ЄСВ</span>
+          <span class="text-sm font-bold text-gray-700">Ставка (мін. {{ tax.ESV_MONTHLY }})</span>
+        </div>
+        <SkeletonLoader v-if="loading" width="70px" height="18px" />
+        <span v-else class="font-black text-gray-900">{{ (calculations.esv || 0).toFixed(2) }} ₴</span>
       </div>
     </div>
     

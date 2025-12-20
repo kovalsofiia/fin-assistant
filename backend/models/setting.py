@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from models.common import FopGroup
+from models.common import FopGroup, TaxSystem, ActivityType, ReportingPeriod
 from core.constants import (
     MIN_TAX_PERCENT, 
     MAX_TAX_PERCENT, 
@@ -19,6 +19,15 @@ class FopSettingsBase(BaseModel):
     esv_value: Optional[float] = Field(None, ge=MIN_ESV_VALUE, le=MAX_ESV_VALUE)
     # Військовий збір: від 0% до 100%
     military_tax_percent: Optional[float] = Field(None, ge=MIN_TAX_PERCENT, le=MAX_TAX_PERCENT)
+    
+    # НОВІ ПОЛЯ 2025
+    tax_system: Optional[TaxSystem] = Field(TaxSystem.SIMPLIFIED)
+    activity_type: Optional[ActivityType] = Field(ActivityType.SERVICES)
+    has_employees: bool = Field(False)
+    employees_count: int = Field(0, ge=0)
+    is_vat_payer: bool = Field(False)
+    land_area_ha: Optional[float] = Field(None, ge=0)
+    normative_land_value: Optional[float] = Field(None, ge=0)
 
 class FopSettingsUpdate(FopSettingsBase):
     pass # Використовуємо ту ж структуру для оновлення

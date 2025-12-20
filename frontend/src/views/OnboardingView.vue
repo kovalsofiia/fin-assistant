@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/api'; 
 import { supabase } from '@/supabase';
@@ -18,30 +18,80 @@ import {
 const router = useRouter();
 const isLoading = ref(false);
 const step = ref(1);
-const totalSteps = 3;
+const totalSteps = 5;
 
 // Дані форми
 const formData = ref({
   isFop: null,
-  hasForeignClients: null,
+  taxSystem: 'simplified',
+  fopGroup: 3,
+  activityType: 'services',
+  hasEmployees: false,
+  employeesCount: 0,
+  isVatPayer: false,
+  landArea: 0,
+  landValue: 0,
   yearlyIncome: '',
-  selectedKveds: []
+  selectedKveds: [],
+  reportingPeriod: 'quarter'
 });
 
 // Пошук КВЕДів
 const kvedSearch = ref('');
 const openSections = ref({});
 
+// Ліміти груп на 2025 рік
+const GROUP_LIMITS = {
+  1: 1336000,
+  2: 5920000,
+  3: 9336000,
+  4: Infinity
+};
+
+const EMPLOYEE_LIMITS = {
+  1: 0,
+  2: 10,
+  3: Infinity,
+  4: 0
+};
+
+const incomeError = computed(() => {
+  const income = parseFloat(formData.value.yearlyIncome);
+  if (isNaN(income)) return null;
+  if (income < 0) return "Дохід не може бути від'ємним";
+  const limit = GROUP_LIMITS[formData.value.fopGroup];
+  if (income > limit) {
+    return `Дохід перевищує ліміт для ${formData.value.fopGroup}-ї групи (${limit.toLocaleString()} ₴)`;
+  }
+  return null;
+});
+
+const employeeError = computed(() => {
+  const group = formData.value.fopGroup;
+  if (formData.value.hasEmployees) {
+    if (formData.value.employeesCount < 0) return "Кількість працівників не може бути від'ємною";
+    if (group === 1 || group === 4) return "Для цієї групи наймані працівники заборонені";
+    if (group === 2 && formData.value.employeesCount > 10) return "Для 2-ї групи ліміт — 10 працівників";
+  }
+  return null;
+});
+
 const filteredKveds = computed(() => {
-  if (!kvedSearch.value) return KVED_SECTIONS;
   const search = kvedSearch.value.toLowerCase();
-  return KVED_SECTIONS.map(section => ({
-    ...section,
-    groups: section.groups.map(g => ({
-      ...g,
-      items: g.items.filter(i => i.code.includes(search) || i.name.toLowerCase().includes(search))
-    })).filter(g => g.items.length > 0)
-  })).filter(s => s.groups.length > 0);
+  const selectedGroup = parseInt(formData.value.fopGroup);
+
+  return KVED_SECTIONS.map(section => {
+    const filteredGroups = section.groups.map(g => {
+      const filteredItems = g.items.filter(i => {
+        const matchesSearch = !search || i.code.includes(search) || i.name.toLowerCase().includes(search);
+        const isAllowedByGroup = i.allowedGroups && i.allowedGroups.includes(selectedGroup);
+        return matchesSearch && isAllowedByGroup;
+      });
+      return { ...g, items: filteredItems };
+    }).filter(g => g.items.length > 0);
+
+    return { ...section, groups: filteredGroups };
+  }).filter(s => s.groups.length > 0);
 });
 
 // Методи вибору
@@ -53,6 +103,22 @@ const toggleKved = (item) => {
 
 const isKvedSelected = (code) => formData.value.selectedKveds.some(k => k.code === code);
 const toggleSection = (id) => { openSections.value[id] = !openSections.value[id]; };
+
+// Очистка невалідних КВЕДів та перевірка працівників при зміні групи
+watch(() => formData.value.fopGroup, (newGroup) => {
+  const selectedGroup = parseInt(newGroup);
+  
+  // КВЕДи
+  formData.value.selectedKveds = formData.value.selectedKveds.filter(k => 
+    k.allowedGroups && k.allowedGroups.includes(selectedGroup)
+  );
+
+  // Працівники: якщо в групі заборонені - скидаємо
+  if (selectedGroup === 1 || selectedGroup === 4) {
+    formData.value.hasEmployees = false;
+    formData.value.employeesCount = 0;
+  }
+});
 
 // Логіка завершення
 const finishOnboarding = async () => {
@@ -69,18 +135,20 @@ const finishOnboarding = async () => {
 
     // 2. Якщо користувач ФОП, зберігаємо податкові налаштування та КВЕДи
     if (formData.value.isFop) {
-      // Визначаємо групу
-      let group = 3;
-      if (!formData.value.hasForeignClients && parseFloat(formData.value.yearlyIncome || 0) < 5000000) {
-        group = 2;
-      }
-
       const settingsData = {
-        fop_group: group,
-        is_zed: formData.value.hasForeignClients,
-        income_tax_percent: group === 3 ? 5.0 : 0,
+        tax_system: formData.value.taxSystem,
+        fop_group: parseInt(formData.value.fopGroup),
+        activity_type: formData.value.activityType,
+        has_employees: formData.value.hasEmployees,
+        employees_count: parseInt(formData.value.employeesCount || 0),
+        is_vat_payer: formData.value.isVatPayer,
+        land_area_ha: parseFloat(formData.value.landArea || 0),
+        normative_land_value: parseFloat(formData.value.landValue || 0),
+        reporting_period: formData.value.reportingPeriod,
+        income_tax_percent: formData.value.fopGroup == 3 ? (formData.value.isVatPayer ? 3 : 5) : 0,
+        military_tax_percent: formData.value.fopGroup == 3 ? 1 : 1.5, // 1% group 3, else fixed logic handled by service
         esv_value: 1760.0,
-        military_tax_percent: 1.5
+        is_zed: formData.value.selectedKveds.some(k => k.code.startsWith('62') || k.code.startsWith('63')) // Simplified ZED detection or manual
       };
       await api.patch(`/settings/${user.id}`, settingsData);
 
@@ -173,36 +241,31 @@ const finishOnboarding = async () => {
         </div>
       </div>
 
-      <!-- Step 2: Details -->
+      <!-- Step 2: Tax System & Group -->
       <div v-if="step === 2" class="space-y-8 animate-fade-in">
         <div class="text-center">
-          <h3 class="text-2xl font-extrabold text-gray-800 mb-2">Деталі діяльності</h3>
-          <p class="text-gray-500 font-medium">Це допоможе визначити групу оподаткування</p>
+          <h3 class="text-2xl font-extrabold text-gray-800 mb-2">Система оподаткування</h3>
+          <p class="text-gray-500 font-medium">Оберіть вашу групу ФОП на 2025 рік</p>
         </div>
 
         <div class="space-y-6">
-          <p class="font-bold text-gray-700 text-lg">Чи працюєте ви з іноземними замовниками (ЗЕД)?</p>
           <div class="grid grid-cols-1 gap-4">
             <button 
-              @click="formData.hasForeignClients = true; step++"
-              class="w-full py-5 px-6 rounded-2xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 text-left group transition-all"
+              v-for="g in [1, 2, 3, 4]" 
+              :key="g"
+              @click="formData.fopGroup = g; step++"
+              class="w-full py-5 px-6 rounded-2xl border-2 text-left group transition-all"
+              :class="formData.fopGroup === g ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-blue-200'"
             >
               <div class="flex items-center justify-between">
                 <div>
-                  <div class="font-black text-gray-900 group-hover:text-blue-700">Так, отримую дохід у валюті</div>
-                  <div class="text-sm text-gray-500 font-medium mt-1">Для експорту послуг або товарів за кордон</div>
-                </div>
-                <div class="w-2 h-2 rounded-full bg-gray-200 group-hover:bg-blue-500 group-hover:scale-150 transition-all"></div>
-              </div>
-            </button>
-            <button 
-              @click="formData.hasForeignClients = false; step++"
-              class="w-full py-5 px-6 rounded-2xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 text-left group transition-all"
-            >
-              <div class="flex items-center justify-between">
-                <div>
-                  <div class="font-black text-gray-900 group-hover:text-blue-700">Ні, працюю тільки по Україні</div>
-                  <div class="text-sm text-gray-500 font-medium mt-1">Весь мій дохід у гривні від резидентів UA</div>
+                  <div class="font-black text-gray-900 group-hover:text-blue-700">Група {{ g }}</div>
+                  <div class="text-xs text-gray-500 font-medium mt-1">
+                    <span v-if="g === 1">До 1.33 млн грн. Без найманих працівників. Тільки послуги населенню.</span>
+                    <span v-if="g === 2">До 5.92 млн грн. До 10 працівників. Послуги та торгівля.</span>
+                    <span v-if="g === 3">До 9.33 млн грн. Без ліміту працівників. Будь-яка діяльність.</span>
+                    <span v-if="g === 4">Сільськогосподарська діяльність. Без ліміту доходу.</span>
+                  </div>
                 </div>
                 <div class="w-2 h-2 rounded-full bg-gray-200 group-hover:bg-blue-500 group-hover:scale-150 transition-all"></div>
               </div>
@@ -211,8 +274,125 @@ const finishOnboarding = async () => {
         </div>
       </div>
 
-      <!-- Step 3: KVEDs -->
-      <div v-if="step === 3" class="space-y-6 animate-fade-in">
+      <!-- Step 3: Income, Employees & VAT -->
+      <div v-if="step === 3" class="space-y-8 animate-fade-in">
+        <div class="text-center">
+          <h3 class="text-2xl font-extrabold text-gray-800 mb-2">Бізнес-показники</h3>
+          <p class="text-gray-500 font-medium">Вкажіть плани на 2025 рік</p>
+        </div>
+
+        <div class="space-y-6">
+          <div class="space-y-2">
+            <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Очікуваний річний дохід (грн)</label>
+            <input 
+              type="number" 
+              v-model="formData.yearlyIncome" 
+              placeholder="Напр. 1000000" 
+              min="0"
+              class="w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all font-black text-gray-800"
+              :class="incomeError ? 'border-red-500 focus:border-red-500 bg-red-50/30' : 'border-transparent focus:border-blue-500'"
+            >
+            <transition enter-active-class="animate-fade-in" leave-active-class="opacity-0">
+              <p v-if="incomeError" class="text-red-500 text-xs font-bold px-1 mt-1">{{ incomeError }}</p>
+            </transition>
+          </div>
+
+          <div class="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border" :class="employeeError && !formData.hasEmployees ? 'border-red-500 bg-red-50' : 'border-gray-100'">
+            <div>
+              <p class="font-black text-gray-900">Чи є наймані працівники?</p>
+              <p class="text-xs text-gray-500">Позначте, якщо у вас офіційно працевлаштовані люди</p>
+            </div>
+            <input type="checkbox" v-model="formData.hasEmployees" :disabled="formData.fopGroup === 1 || formData.fopGroup === 4" class="w-6 h-6 rounded-lg text-blue-600 focus:ring-blue-500 border-gray-300 disabled:opacity-50">
+          </div>
+          <p v-if="(formData.fopGroup === 1 || formData.fopGroup === 4) && formData.hasEmployees" class="text-red-500 text-[10px] font-bold px-1 -mt-4">Наймані працівники заборонені для {{ formData.fopGroup }}-ї групи</p>
+
+          <div v-if="formData.hasEmployees" class="animate-fade-in space-y-2">
+            <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Кількість працівників</label>
+            <input 
+              type="number" 
+              v-model="formData.employeesCount" 
+              min="0"
+              class="w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all font-black text-gray-800"
+              :class="employeeError && formData.hasEmployees ? 'border-red-500 focus:border-red-500 bg-red-50/30' : 'border-transparent focus:border-blue-500'"
+            >
+            <p v-if="employeeError" class="text-red-500 text-xs font-bold px-1 mt-1">{{ employeeError }}</p>
+          </div>
+
+          <div v-if="formData.fopGroup === 3" class="flex items-center justify-between p-5 bg-blue-50/50 rounded-2xl border border-blue-100 animate-fade-in">
+            <div>
+              <p class="font-black text-blue-900">Чи є ви платником ПДВ?</p>
+              <p class="text-xs text-blue-700">Тільки для 3-ї групи (ставка 3% замість 5%)</p>
+            </div>
+            <input type="checkbox" v-model="formData.isVatPayer" class="w-6 h-6 rounded-lg text-blue-600 focus:ring-blue-500 border-blue-200">
+          </div>
+          
+          <button 
+            @click="step++" 
+            :disabled="!!incomeError || !!employeeError || !formData.yearlyIncome"
+            class="w-full py-5 rounded-2xl font-black transition-all shadow-xl shadow-gray-200"
+            :class="(incomeError || employeeError || !formData.yearlyIncome) ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-gray-900 text-white hover:bg-black'"
+          >
+            Продовжити
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 4: Group 4 Specifics OR Skip -->
+      <div v-if="step === 4" class="space-y-8 animate-fade-in">
+        <div v-if="formData.fopGroup === 4" class="space-y-8">
+            <div class="text-center">
+              <h3 class="text-2xl font-extrabold text-gray-800 mb-2">Сільськогосподарські дані</h3>
+              <p class="text-gray-500 font-medium">Налаштування для 4-ї групи ФОП</p>
+            </div>
+            <div class="space-y-6">
+              <div class="space-y-2">
+                <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Площа земель (га)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  min="0"
+                  v-model="formData.landArea" 
+                  class="w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all font-black text-gray-800"
+                  :class="formData.landArea < 0 ? 'border-red-500 focus:border-red-500 bg-red-50/30' : 'border-transparent focus:border-blue-500'"
+                >
+                <p v-if="formData.landArea < 0" class="text-red-500 text-xs font-bold px-1 mt-1">Площа не може бути від'ємною</p>
+              </div>
+              <div class="space-y-2">
+                <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Нормативна грошова оцінка (грн/га)</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  v-model="formData.landValue" 
+                  class="w-full px-5 py-4 bg-gray-50 border-2 rounded-2xl outline-none transition-all font-black text-gray-800"
+                  :class="formData.landValue < 0 ? 'border-red-500 focus:border-red-500 bg-red-50/30' : 'border-transparent focus:border-blue-500'"
+                >
+                <p v-if="formData.landValue < 0" class="text-red-500 text-xs font-bold px-1 mt-1">Оцінка не може бути від'ємною</p>
+              </div>
+              <button 
+                @click="step++" 
+                :disabled="formData.landArea < 0 || formData.landValue < 0"
+                class="w-full py-5 rounded-2xl font-black transition-all shadow-xl shadow-blue-100"
+                :class="(formData.landArea < 0 || formData.landValue < 0) ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-blue-600 text-white hover:bg-blue-700'"
+              >
+                До вибору КВЕДів
+              </button>
+            </div>
+        </div>
+        <div v-else class="text-center space-y-6">
+            <div class="bg-gray-50 p-10 rounded-3xl border border-gray-100">
+                <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Check :size="40" stroke-width="3" />
+                </div>
+                <h3 class="text-2xl font-black text-gray-900 mb-2">Параметри прийнято</h3>
+                <p class="text-gray-500 font-medium mb-8">Майже готово. Залишилось обрати КВЕДи для вашої діяльності.</p>
+                <button @click="step++" class="w-full py-5 rounded-2xl font-black bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-xl shadow-blue-100">
+                    Перейти до КВЕДів
+                </button>
+            </div>
+        </div>
+      </div>
+      <!-- Step 5: KVEDs -->
+      <div v-if="step === 5" class="space-y-6 animate-fade-in">
         <div class="bg-blue-50/50 p-5 rounded-3xl text-sm text-blue-800 flex gap-4 border border-blue-100 shadow-sm shadow-blue-50">
           <div class="bg-blue-100 p-2 rounded-xl h-fit">
             <Info :size="20" class="text-blue-600" />
