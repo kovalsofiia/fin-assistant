@@ -94,10 +94,11 @@ class TaxService:
             
         elif settings.fop_group == FopGroup.GROUP_4:
             # Single tax — normative monetary valuation of land × land area × rate
-            # Using 0.95% as a common rate if not specified (range 0.09% - 1.8%)
+            # Rates range from 0.09% to 1.8% depending on land category
             land_value = settings.normative_land_value or 0.0
             area = settings.land_area_ha or 0.0
-            single_tax = (land_value * area * 0.0095) / 12 # Monthly share of annual tax
+            rate = (settings.income_tax_percent / 100.0) if settings.income_tax_percent is not None else 0.0095
+            single_tax = (land_value * area * rate) / 12 # Monthly share of annual tax
             military_tax = FIXED_MILITARY_TAX
 
         # Adjust for period

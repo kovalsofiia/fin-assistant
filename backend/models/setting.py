@@ -17,7 +17,7 @@ class FopSettingsBase(BaseModel):
     income_tax_percent: Optional[float] = Field(None, ge=MIN_TAX_PERCENT, le=MAX_TAX_PERCENT)
     # ЄСВ: не може бути від'ємним
     esv_value: Optional[float] = Field(None, ge=MIN_ESV_VALUE, le=MAX_ESV_VALUE)
-    # Військовий збір: від 0% до 100%
+    # Військовий збір: від 0 до 100
     military_tax_percent: Optional[float] = Field(None, ge=MIN_TAX_PERCENT, le=MAX_TAX_PERCENT)
     
     # НОВІ ПОЛЯ 2025

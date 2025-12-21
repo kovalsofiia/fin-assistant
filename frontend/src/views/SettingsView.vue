@@ -6,6 +6,7 @@ import api from '@/api';
 import { supabase } from '@/supabase';
 import BaseModal from '../components/common/BaseModal.vue'; 
 import { KVED_SECTIONS } from '../constants/kveds';
+import { APP_CONSTANTS } from '../constants/appConstants';
 import { 
   User, 
   Briefcase, 
@@ -49,7 +50,9 @@ const fopSettings = ref({
   employees_count: 0,
   is_vat_payer: false,
   land_area_ha: 0,
-  normative_land_value: 0
+  normative_land_value: 0,
+  single_tax_value: 0,
+  military_tax_value: 0
 });
 
 // Локальний стан для КВЕДів
@@ -94,6 +97,18 @@ const loadData = async () => {
             land_area_ha: settingsRes.data.land_area_ha || 0,
             normative_land_value: settingsRes.data.normative_land_value || 0
           };
+          
+          // Ініціалізуємо суми на основі групи та констант (бо вони не в БД)
+          const group = parseInt(fopSettings.value.fop_group);
+          if (group === 1) {
+            fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G1;
+            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+          } else if (group === 2) {
+            fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G2;
+            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+          } else if (group === 4) {
+            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+          }
         }
       } catch (e) {
         console.warn("Settings not found, using defaults");
@@ -197,17 +212,54 @@ watch(() => fopSettings.value.fop_group, (newGroup) => {
   if (group === 1 || group === 4) {
     fopSettings.value.has_employees = false;
     fopSettings.value.employees_count = 0;
-    // fopSettings.value.is_zed = false; // Disabled for now
+  }
+  
+  // Автоматичне підставлення ставок при зміні групи (якщо вони порожні або дефолтні)
+  if (group === 1) {
+    fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G1;
+    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.income_tax_percent = 0;
+    fopSettings.value.military_tax_percent = 0;
+  } else if (group === 2) {
+    fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G2;
+    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.income_tax_percent = 0;
+    fopSettings.value.military_tax_percent = 0;
+  } else if (group === 3) {
+    fopSettings.value.income_tax_percent = fopSettings.value.is_vat_payer ? 3 : 5;
+    fopSettings.value.military_tax_percent = 1;
+    fopSettings.value.single_tax_value = 0;
+    fopSettings.value.military_tax_value = 0;
+  } else if (group === 4) {
+    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.single_tax_value = 0;
+    fopSettings.value.income_tax_percent = 0;
+    fopSettings.value.military_tax_percent = 0;
   }
 });
 
-// Проактивне обмеження кількості працівників
+// Проактивне обмеження кількості працівників та ставок
 watch(() => fopSettings.value.employees_count, (newVal) => {
   if (newVal < 0) fopSettings.value.employees_count = 0;
   
   const group = parseInt(fopSettings.value.fop_group);
   if (group === 2 && newVal > 10) {
     fopSettings.value.employees_count = 10;
+  }
+});
+
+watch(() => fopSettings.value.income_tax_percent, (newVal) => {
+  const group = parseInt(fopSettings.value.fop_group);
+  if (group === 4) {
+    if (newVal < 0.09) fopSettings.value.income_tax_percent = 0.09;
+    if (newVal > 1.8) fopSettings.value.income_tax_percent = 1.8;
+  }
+});
+
+// Автоматичне перемикання податку при зміні ПДВ (для 3 групи)
+watch(() => fopSettings.value.is_vat_payer, (isVat) => {
+  if (parseInt(fopSettings.value.fop_group) === 3) {
+    fopSettings.value.income_tax_percent = isVat ? 3 : 5;
   }
 });
 
@@ -349,30 +401,40 @@ onMounted(() => {
             </div>
           </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <label class="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-white transition-all group">
-              <div>
-                <p class="font-black text-gray-900 group-hover:text-blue-600 transition-colors">Наймані працівники</p>
-                <p class="text-[10px] text-gray-500 uppercase tracking-widest font-black" v-if="fopSettings.has_employees">{{ fopSettings.employees_count }} осіб</p>
-              </div>
-              <div class="relative w-7 h-7">
-                <input type="checkbox" v-model="fopSettings.has_employees" class="peer appearance-none w-7 h-7 border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all">
-                <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
-                  <Check :size="16" stroke-width="4" />
-                </div>
-              </div>
-            </label>
+                <label 
+                  class="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border border-gray-100 transition-all group"
+                  :class="[fopSettings.fop_group === 1 || fopSettings.fop_group === 4 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-white']"
+                >
+                  <div>
+                    <p class="font-black text-gray-900 group-hover:text-blue-600 transition-colors">Наймані працівники</p>
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-black" v-if="fopSettings.has_employees">
+                      {{ fopSettings.fop_group === 2 ? 'Макс. 10 осіб' : 'Без обмежень' }}
+                    </p>
+                    <p class="text-[10px] text-red-500 uppercase tracking-widest font-black" v-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 4">Заборонено законодавством</p>
+                  </div>
+                  <div class="relative w-7 h-7">
+                    <input 
+                      type="checkbox" 
+                      v-model="fopSettings.has_employees" 
+                      :disabled="fopSettings.fop_group === 1 || fopSettings.fop_group === 4"
+                      class="peer appearance-none w-7 h-7 border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all disabled:bg-gray-200"
+                    >
+                    <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                      <Check :size="16" stroke-width="4" />
+                    </div>
+                  </div>
+                </label>
                
                 <div v-if="fopSettings.has_employees" class="animate-fade-in flex flex-col gap-2">
-                  <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Кількість</label>
+                  <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Кількість працівників</label>
                   <input 
                     type="number" 
                     v-model.number="fopSettings.employees_count" 
                     min="0"
+                    :max="fopSettings.fop_group === 2 ? 10 : undefined"
                     class="px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800"
                   >
                 </div>
-            </div>
 
             <!-- Group 4 Details -->
             <transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 translate-x-4" enter-to-class="opacity-100 translate-x-0">
@@ -403,35 +465,82 @@ onMounted(() => {
 
             <!-- Tax Rates Inputs -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
+              <!-- Єдиний податок -->
               <div class="flex flex-col gap-2">
-                <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Єдиний податок (%)</label>
+                <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
+                  {{ fopSettings.fop_group === 3 ? 'Єдиний податок (%)' : (fopSettings.fop_group === 4 ? 'Ставка податку (%)' : 'Єдиний податок (грн/міс)') }}
+                </label>
+                  
+                  <!-- Для 3 групи - відсотки -->
                   <input 
+                    v-if="fopSettings.fop_group === 3"
                     type="number" 
                     step="0.1" 
                     min="0"
                     v-model.number="fopSettings.income_tax_percent" 
-                    :disabled="fopSettings.fop_group !== 3"
-                    class="px-4 py-3 bg-white border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800 disabled:opacity-50 disabled:grayscale"
+                    class="px-4 py-3 bg-white border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800"
+                    title="Ставка для 3-ї групи: 5% (або 3% з ПДВ)"
                   >
-              </div>
-              <div class="flex flex-col gap-2">
-                <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Військовий збір (%)</label>
+                  <!-- Для 1 та 2 груп - фіксована сума (НЕ РЕДАГУЄТЬСЯ) -->
                   <input 
+                    v-else-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 2"
+                    type="number" 
+                    v-model.number="fopSettings.single_tax_value" 
+                    disabled
+                    class="px-4 py-3 bg-gray-100 border-2 border-transparent rounded-xl outline-none transition-all font-bold text-gray-400 cursor-not-allowed"
+                    title="Для 1-ї та 2-ї груп ставка фіксована"
+                  >
+                  <!-- Для 4 групи - редагуємо відсоток 0.09% - 1.8% -->
+                  <div v-else class="flex flex-col gap-1">
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      min="0.09"
+                      max="1.8"
+                      v-model.number="fopSettings.income_tax_percent" 
+                      class="px-4 py-3 bg-white border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800"
+                    >
+                    <span class="text-[8px] text-gray-400 font-bold px-1 uppercase tracking-tighter">Діапазон: 0.09% - 1.8%</span>
+                  </div>
+              </div>
+
+              <!-- Військовий збір -->
+              <div class="flex flex-col gap-2">
+                <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
+                  {{ fopSettings.fop_group === 3 ? 'Військовий збір (%)' : 'Військовий збір (грн/міс)' }}
+                </label>
+                  
+                  <!-- Для 3 групи - 1% -->
+                  <input 
+                    v-if="fopSettings.fop_group === 3"
                     type="number" 
                     step="0.1" 
                     min="0"
                     v-model.number="fopSettings.military_tax_percent" 
                     class="px-4 py-3 bg-white border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800"
                   >
+                  <!-- Для інших - фіксований 800 грн (НЕ РЕДАГУЄТЬСЯ) -->
+                  <input 
+                    v-else
+                    type="number" 
+                    v-model.number="fopSettings.military_tax_value" 
+                    disabled
+                    class="px-4 py-3 bg-gray-100 border-2 border-transparent rounded-xl outline-none transition-all font-bold text-gray-400 cursor-not-allowed"
+                  >
               </div>
+
+              <!-- ЄСВ -->
               <div class="flex flex-col gap-2">
                 <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">ЄСВ (грн/міс)</label>
                   <input 
                     type="number" 
                     min="0"
                     v-model.number="fopSettings.esv_value" 
-                    class="px-4 py-3 bg-white border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800"
+                    :disabled="fopSettings.fop_group === 1 || fopSettings.fop_group === 2"
+                    :class="[fopSettings.fop_group === 1 || fopSettings.fop_group === 2 ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent' : 'bg-white text-gray-800 border-transparent focus:border-indigo-500']"
+                    class="px-4 py-3 border-2 rounded-xl outline-none transition-all font-bold"
                   >
+                  <span v-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 2" class="text-[8px] text-gray-400 font-bold px-1 uppercase tracking-tighter">Фіксована ставка для G1/G2</span>
               </div>
             </div>
 
