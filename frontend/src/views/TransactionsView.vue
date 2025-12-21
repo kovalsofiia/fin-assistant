@@ -4,7 +4,7 @@ import { useTransactionStore } from '@/stores/transactionStore';
 import { supabase } from '@/supabase';
 import BaseModal from '@/components/common/BaseModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
-import { Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info } from 'lucide-vue-next';
+import { Check, Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info } from 'lucide-vue-next';
 
 const store = useTransactionStore();
 const userId = ref(null);
@@ -367,16 +367,15 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
           </div>
         </div>
 
-        <!-- ZED/FX Row (Multi-currency) -->
         <div class="group">
-          <label class="flex items-center gap-4 bg-blue-50/50 p-5 rounded-3xl border-2 border-dashed border-blue-100 cursor-pointer hover:bg-blue-50 transition-all">
-            <div class="relative w-6 h-6">
-              <input type="checkbox" v-model="form.isZed" class="peer appearance-none w-6 h-6 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-lg transition-all">
-              <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
-                <Check :size="14" stroke-width="4" />
+          <label class="flex items-center gap-4 bg-blue-50/50 p-5 rounded-3xl border-2 border-dashed border-blue-100 cursor-pointer hover:bg-white hover:border-blue-200 transition-all shadow-sm hover:shadow-md">
+            <div class="relative w-7 h-7 shrink-0">
+              <input type="checkbox" v-model="form.isZed" class="peer appearance-none w-7 h-7 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all shadow-inner">
+              <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
+                <Check :size="16" stroke-width="4" />
               </div>
             </div>
-            <span class="font-black text-blue-900 uppercase tracking-widest text-xs">Операція в іноземній валюті</span>
+            <span class="font-black text-blue-900 uppercase tracking-widest text-[10px] group-hover:text-blue-600 transition-colors">Операція в іноземній валюті</span>
           </label>
           
           <div v-if="form.isZed" class="mt-6 grid grid-cols-2 gap-4 animate-fade-in">

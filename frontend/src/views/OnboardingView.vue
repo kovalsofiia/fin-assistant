@@ -302,7 +302,12 @@ const finishOnboarding = async () => {
               <p class="font-black text-gray-900">Чи є наймані працівники?</p>
               <p class="text-xs text-gray-500">Позначте, якщо у вас офіційно працевлаштовані люди</p>
             </div>
-            <input type="checkbox" v-model="formData.hasEmployees" :disabled="formData.fopGroup === 1 || formData.fopGroup === 4" class="w-6 h-6 rounded-lg text-blue-600 focus:ring-blue-500 border-gray-300 disabled:opacity-50">
+            <div class="relative w-7 h-7">
+              <input type="checkbox" v-model="formData.hasEmployees" :disabled="formData.fopGroup === 1 || formData.fopGroup === 4" class="peer appearance-none w-7 h-7 border-2 border-gray-300 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all disabled:opacity-50">
+              <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                <Check :size="16" stroke-width="4" />
+              </div>
+            </div>
           </div>
           <p v-if="(formData.fopGroup === 1 || formData.fopGroup === 4) && formData.hasEmployees" class="text-red-500 text-[10px] font-bold px-1 -mt-4">Наймані працівники заборонені для {{ formData.fopGroup }}-ї групи</p>
 
@@ -323,7 +328,12 @@ const finishOnboarding = async () => {
               <p class="font-black text-blue-900">Чи є ви платником ПДВ?</p>
               <p class="text-xs text-blue-700">Тільки для 3-ї групи (ставка 3% замість 5%)</p>
             </div>
-            <input type="checkbox" v-model="formData.isVatPayer" class="w-6 h-6 rounded-lg text-blue-600 focus:ring-blue-500 border-blue-200">
+            <div class="relative w-7 h-7">
+              <input type="checkbox" v-model="formData.isVatPayer" class="peer appearance-none w-7 h-7 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all">
+              <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                <Check :size="16" stroke-width="4" />
+              </div>
+            </div>
           </div>
           
           <button 

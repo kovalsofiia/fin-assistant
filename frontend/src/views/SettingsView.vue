@@ -291,14 +291,16 @@ onMounted(() => {
           </div>
           
           <div class="flex items-center">
-            <label class="flex items-center gap-4 cursor-pointer p-4 rounded-2xl bg-gray-50 hover:bg-blue-50 transition-all border-2 border-transparent hover:border-blue-100 group w-full">
-              <div class="w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all bg-white" :class="profile.is_fop ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-100' : 'border-gray-200'">
-                <Check v-if="profile.is_fop" :size="20" class="text-white" stroke-width="3" />
+            <label class="flex items-center gap-6 p-6 bg-gray-50 hover:bg-white rounded-3xl border border-gray-100 cursor-pointer shadow-sm hover:shadow-md transition-all group w-full">
+              <div class="relative w-8 h-8 shrink-0">
+                <input type="checkbox" v-model="profile.is_fop" class="peer appearance-none w-8 h-8 border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all shadow-inner">
+                <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
+                  <Check :size="20" stroke-width="4" />
+                </div>
               </div>
-              <input type="checkbox" v-model="profile.is_fop" class="hidden">
               <div>
-                <span class="block font-black text-gray-900">Я використовую ФОП</span>
-                <span class="text-xs text-gray-500 font-medium">Активує податкові інструменти</span>
+                <span class="block font-black text-gray-900 text-lg group-hover:text-blue-600 transition-colors">Я використовую ФОП</span>
+                <span class="text-xs text-gray-500 font-medium">Активує податкові інструменти та податкові розрахунки</span>
               </div>
             </label>
           </div>
@@ -347,13 +349,18 @@ onMounted(() => {
           </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <label class="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-white transition-all">
-                  <div>
-                    <p class="font-black text-gray-900">Наймані працівники</p>
-                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-black" v-if="fopSettings.has_employees">{{ fopSettings.employees_count }} осіб</p>
-                  </div>
-                  <input type="checkbox" v-model="fopSettings.has_employees" class="w-6 h-6 rounded-lg text-indigo-600 focus:ring-indigo-500">
-               </label>
+              <label class="flex items-center justify-between p-5 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-white transition-all group">
+              <div>
+                <p class="font-black text-gray-900 group-hover:text-blue-600 transition-colors">Наймані працівники</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-widest font-black" v-if="fopSettings.has_employees">{{ fopSettings.employees_count }} осіб</p>
+              </div>
+              <div class="relative w-7 h-7">
+                <input type="checkbox" v-model="fopSettings.has_employees" class="peer appearance-none w-7 h-7 border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all">
+                <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                  <Check :size="16" stroke-width="4" />
+                </div>
+              </div>
+            </label>
                
                 <div v-if="fopSettings.has_employees" class="animate-fade-in flex flex-col gap-2">
                   <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">Кількість</label>
@@ -380,13 +387,18 @@ onMounted(() => {
               </div>
             </transition>
 
-            <div v-if="fopSettings.fop_group === 3" class="flex items-center justify-between p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 animate-fade-in">
+            <label v-if="fopSettings.fop_group === 3" class="flex items-center justify-between p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 animate-fade-in hover:bg-indigo-50 transition-all cursor-pointer group">
               <div>
-                <p class="font-black text-indigo-900">Платник ПДВ</p>
+                <p class="font-black text-indigo-900 group-hover:text-blue-600 transition-colors">Платник ПДВ</p>
                 <p class="text-[10px] text-indigo-600 font-bold uppercase tracking-widest">Ставка податку 3% замість 5%</p>
               </div>
-              <input type="checkbox" v-model="fopSettings.is_vat_payer" class="w-6 h-6 rounded-lg text-indigo-600 focus:ring-indigo-500">
-            </div>
+              <div class="relative w-7 h-7">
+                <input type="checkbox" v-model="fopSettings.is_vat_payer" class="peer appearance-none w-7 h-7 border-2 border-indigo-200 checked:bg-indigo-600 checked:border-indigo-600 rounded-xl transition-all">
+                <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                  <Check :size="16" stroke-width="4" />
+                </div>
+              </div>
+            </label>
 
             <!-- Tax Rates Inputs -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
@@ -461,12 +473,14 @@ onMounted(() => {
 
             <!-- ZED Checkbox -->
             <label class="flex items-center gap-6 p-6 border-2 border-gray-50 rounded-3xl cursor-pointer hover:border-indigo-100 transition-all bg-gray-50/30 group">
-              <div class="w-10 h-10 rounded-2xl border-2 flex items-center justify-center transition-all bg-white" :class="fopSettings.is_zed ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-100' : 'border-gray-200 group-hover:border-indigo-300'">
-                <Check v-if="fopSettings.is_zed" :size="20" class="text-white" stroke-width="3" />
+              <div class="relative w-10 h-10 shrink-0">
+                <input type="checkbox" v-model="fopSettings.is_zed" class="peer appearance-none w-10 h-10 border-2 border-gray-200 checked:bg-indigo-600 checked:border-indigo-600 rounded-2xl transition-all shadow-inner">
+                <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
+                  <Check :size="24" stroke-width="4" />
+                </div>
               </div>
-              <input type="checkbox" v-model="fopSettings.is_zed" class="hidden">
               <div class="flex-grow">
-                <span class="block font-black text-gray-900 text-lg">ЗЕД (ВЕД)</span>
+                <span class="block font-black text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">ЗЕД (ВЕД)</span>
                 <span class="text-sm text-gray-500 font-medium">Робота з валютою та іноземними контрагентами</span>
               </div>
               <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" v-if="fopSettings.is_zed"></div>
