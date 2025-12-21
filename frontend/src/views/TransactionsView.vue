@@ -14,6 +14,8 @@ const isModalOpen = ref(false);
 const isCategoryModalOpen = ref(false); 
 const isSubmitting = ref(false);
 const editingTxId = ref(null); 
+const fopSettings = ref(null);
+const userProfile = ref(null);
 
 // --- 1. Фільтри ---
 watch(() => store.filters, () => {
@@ -42,6 +44,18 @@ onMounted(async () => {
   if (user) {
     userId.value = user.id;
     await store.fetchInitialData();
+    
+    // Отримуємо налаштування ФОП для валідації ЗЕД
+    try {
+      const [profileRes, settingsRes] = await Promise.all([
+        api.getProfile(user.id),
+        api.getFopSettings(user.id)
+      ]);
+      userProfile.value = profileRes.data;
+      fopSettings.value = settingsRes.data;
+    } catch (e) {
+      console.error("Error loading user context:", e);
+    }
   }
 });
 
@@ -367,15 +381,30 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
           </div>
         </div>
 
+        <!-- ZED/FX Row (Multi-currency) -->
         <div class="group">
-          <label class="flex items-center gap-4 bg-blue-50/50 p-5 rounded-3xl border-2 border-dashed border-blue-100 cursor-pointer hover:bg-white hover:border-blue-200 transition-all shadow-sm hover:shadow-md">
+          <label 
+            class="flex items-center gap-4 bg-blue-50/50 p-5 rounded-3xl border-2 border-dashed border-blue-100 transition-all shadow-sm"
+            :class="[fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4 ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer hover:bg-white hover:border-blue-200 hover:shadow-md']"
+          >
             <div class="relative w-7 h-7 shrink-0">
-              <input type="checkbox" v-model="form.isZed" class="peer appearance-none w-7 h-7 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all shadow-inner">
+              <input 
+                type="checkbox" 
+                v-model="form.isZed" 
+                :disabled="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4"
+                class="peer appearance-none w-7 h-7 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all shadow-inner disabled:bg-gray-200 disabled:border-gray-300"
+              >
               <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
                 <Check :size="16" stroke-width="4" />
               </div>
             </div>
-            <span class="font-black text-blue-900 uppercase tracking-widest text-[10px] group-hover:text-blue-600 transition-colors">Операція в іноземній валюті</span>
+            <div class="flex flex-col">
+              <span class="font-black text-blue-900 uppercase tracking-widest text-[10px] group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                Операція в іноземній валюті
+                <span v-if="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4" class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[8px]">Заборонено для {{ fopSettings.fop_group }} групи</span>
+              </span>
+              <span v-if="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4" class="text-[9px] text-gray-500 font-medium mt-0.5">ФОП 1 та 4 груп не можуть здійснювати зовнішньоекономічну діяльність</span>
+            </div>
           </label>
           
           <div v-if="form.isZed" class="mt-6 grid grid-cols-2 gap-4 animate-fade-in">

@@ -197,6 +197,7 @@ watch(() => fopSettings.value.fop_group, (newGroup) => {
   if (group === 1 || group === 4) {
     fopSettings.value.has_employees = false;
     fopSettings.value.employees_count = 0;
+    // fopSettings.value.is_zed = false; // Disabled for now
   }
 });
 
@@ -472,19 +473,32 @@ onMounted(() => {
             </div>
 
             <!-- ZED Checkbox -->
-            <label class="flex items-center gap-6 p-6 border-2 border-gray-50 rounded-3xl cursor-pointer hover:border-indigo-100 transition-all bg-gray-50/30 group">
+            <!-- ZED Checkbox (Commented out as per request)
+            <label 
+              class="flex items-center gap-6 p-6 border-2 border-gray-50 rounded-3xl transition-all bg-gray-50/30 group"
+              :class="[fopSettings.fop_group === 1 || fopSettings.fop_group === 4 ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer hover:border-indigo-100']"
+            >
               <div class="relative w-10 h-10 shrink-0">
-                <input type="checkbox" v-model="fopSettings.is_zed" class="peer appearance-none w-10 h-10 border-2 border-gray-200 checked:bg-indigo-600 checked:border-indigo-600 rounded-2xl transition-all shadow-inner">
+                <input 
+                  type="checkbox" 
+                  v-model="fopSettings.is_zed" 
+                  :disabled="fopSettings.fop_group === 1 || fopSettings.fop_group === 4"
+                  class="peer appearance-none w-10 h-10 border-2 border-gray-200 checked:bg-indigo-600 checked:border-indigo-600 rounded-2xl transition-all shadow-inner disabled:bg-gray-200 disabled:border-gray-300"
+                >
                 <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
                   <Check :size="24" stroke-width="4" />
                 </div>
               </div>
               <div class="flex-grow">
-                <span class="block font-black text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">ЗЕД (ВЕД)</span>
+                <div class="flex items-center gap-2">
+                  <span class="block font-black text-gray-900 text-lg group-hover:text-indigo-600 transition-colors">ЗЕД (ВЕД)</span>
+                  <span v-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 4" class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Заборонено</span>
+                </div>
                 <span class="text-sm text-gray-500 font-medium">Робота з валютою та іноземними контрагентами</span>
               </div>
               <div class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" v-if="fopSettings.is_zed"></div>
             </label>
+            -->
           </div>
         </section>
       </transition>
