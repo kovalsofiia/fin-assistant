@@ -59,8 +59,8 @@ const handleAuth = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4 bg-gray-50 font-sans">
-    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 animate-slide-up border border-gray-100">
+  <div class="min-h-screen flex items-center justify-center p-0 sm:p-4 bg-gray-50 font-sans">
+    <div class="max-w-md w-full bg-white sm:rounded-3xl shadow-2xl p-8 sm:p-12 animate-slide-up border border-gray-100 min-h-screen sm:min-h-0 flex flex-col justify-center">
       <!-- Logo Section -->
       <div class="flex flex-col items-center mb-10">
         <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-200 mb-6 animate-bounce-slow">

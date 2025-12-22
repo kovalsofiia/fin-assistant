@@ -22,7 +22,7 @@ defineProps({
 </script>
 
 <template>
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full flex flex-col">
+  <div class="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 h-full flex flex-col">
     <div class="flex flex-col mb-4">
       <h2 class="text-xl font-black text-gray-900 flex items-center gap-3">
         <Calculator class="w-6 h-6 text-indigo-600" />

@@ -169,8 +169,8 @@ const finishOnboarding = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-    <div class="max-w-2xl w-full bg-white rounded-3xl shadow-2xl p-8 animate-slide-up border border-gray-100">
+  <div class="min-h-screen bg-gray-50 flex items-center justify-center p-0 sm:p-4">
+    <div class="max-w-2xl w-full bg-white sm:rounded-3xl shadow-2xl p-6 sm:p-10 animate-slide-up border border-gray-100 min-h-screen sm:min-h-0">
       
       <!-- Header & Progress -->
       <div class="mb-10">

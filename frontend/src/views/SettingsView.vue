@@ -305,11 +305,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto p-4 md:p-8 animate-fade-in font-sans">
-    <header class="mb-10 flex justify-between items-end">
+  <div class="max-w-4xl mx-auto p-4 sm:p-8 animate-fade-in font-sans">
+    <header class="mb-8 sm:mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
       <div>
-        <h1 class="text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
-        <p class="text-gray-500 font-medium">Керування профілем та податковими параметрами</p>
+        <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
+        <p class="text-gray-500 font-medium font-bold">Керування профілем та податковими параметрами</p>
       </div>
       <div v-if="message.text" :class="message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'" class="px-4 py-2 rounded-2xl border text-sm font-bold animate-slide-up shadow-sm">
         {{ message.text }}
@@ -324,7 +324,7 @@ onMounted(() => {
     <form v-else @submit.prevent="saveChanges" class="space-y-8">
       
       <!-- Card: Profile -->
-      <section class="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8 transition-shadow hover:shadow-2xl hover:shadow-gray-200">
+      <section class="bg-white rounded-[2rem] sm:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 transition-shadow hover:shadow-2xl hover:shadow-gray-200">
         <div class="flex items-center gap-4 mb-8">
           <div class="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-200">
             <User :size="24" stroke-width="2.5" />
@@ -362,7 +362,7 @@ onMounted(() => {
 
       <!-- Card: Tax Settings (Only if FOP) -->
       <transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 translate-y-4" enter-to-class="opacity-100 translate-y-0">
-        <section v-if="profile.is_fop" class="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-8 transform">
+        <section v-if="profile.is_fop" class="bg-white rounded-[2rem] sm:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 transform">
           <div class="flex items-center gap-4 mb-8">
             <div class="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-200">
               <Briefcase :size="24" stroke-width="2.5" />
@@ -464,7 +464,7 @@ onMounted(() => {
             </label>
 
             <!-- Tax Rates Inputs -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
               <!-- Єдиний податок -->
               <div class="flex flex-col gap-2">
                 <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
@@ -613,16 +613,16 @@ onMounted(() => {
       </transition>
 
       <!-- Action Buttons -->
-      <footer class="sticky bottom-8 z-40 flex items-center justify-between p-6 bg-white/80 backdrop-blur-xl border-2 border-gray-100 rounded-3xl shadow-2xl shadow-gray-300 pb-6 px-8">
-        <div class="text-gray-400 font-bold text-xs uppercase tracking-[0.2em]">
+      <footer class="sticky bottom-4 sm:bottom-8 z-40 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-6 bg-white/80 backdrop-blur-xl border-2 border-gray-100 rounded-[2rem] sm:rounded-3xl shadow-2xl shadow-gray-300">
+        <div class="text-gray-400 font-black text-[10px] uppercase tracking-[0.2em] order-2 sm:order-1">
           {{ isSaving ? 'Узгодження даних...' : 'Готовий до збереження' }}
         </div>
         <button 
           type="submit" 
           :disabled="isSaving" 
-          class="px-10 py-5 bg-blue-600 text-white rounded-2xl font-black text-lg hover:bg-blue-700 disabled:opacity-70 shadow-2xl shadow-blue-200 transition-all active:scale-95 flex items-center gap-4"
+          class="w-full sm:w-auto px-10 py-4 sm:py-5 bg-blue-600 text-white rounded-2xl font-black text-lg hover:bg-blue-700 disabled:opacity-70 shadow-2xl shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-4 order-1 sm:order-2"
         >
-          <Loader2 v-if="isSaving" class="animte-spin" :size="24" />
+          <Loader2 v-if="isSaving" class="animate-spin" :size="24" />
           <Save v-else :size="24" />
           {{ isSaving ? 'Збереження...' : 'Зберегти зміни' }}
         </button>

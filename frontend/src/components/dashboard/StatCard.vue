@@ -33,7 +33,7 @@ defineProps({
 
 <template>
   <div 
-    class="rounded-xl shadow-sm p-6 transition-transform hover:-translate-y-0.5 duration-200 flex flex-col justify-center h-full"
+    class="rounded-[1.5rem] sm:rounded-2xl shadow-sm p-5 sm:p-6 transition-transform hover:-translate-y-0.5 duration-200 flex flex-col justify-center h-full"
     :class="[
       variant === 'primary' 
         ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none' 

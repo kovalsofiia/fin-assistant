@@ -184,7 +184,7 @@ const getCategoryName = (id) => {
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto p-8 animate-fade-in space-y-8">
+  <div class="max-w-6xl mx-auto p-4 sm:p-8 animate-fade-in space-y-8">
     <!-- Header with Period Selector -->
     <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-2">
       <div>
@@ -277,8 +277,8 @@ const getCategoryName = (id) => {
           :loading="isPageLoading || !settings"
         />
 
-        <!-- Payment Calendar Widget -->
-        <div class="bg-white rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
+        <!-- Payment Calendar Widget (Hidden for now) -->
+        <div v-if="false" class="bg-white rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
             <h3 class="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
                 <Clock class="w-6 h-6 text-blue-600" />
                 Календар оплат

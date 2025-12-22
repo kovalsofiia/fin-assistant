@@ -193,15 +193,15 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto p-8 animate-fade-in font-sans">
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+  <div class="max-w-6xl mx-auto p-4 sm:p-8 animate-fade-in font-sans">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 sm:mb-12">
       <div>
-        <h1 class="text-4xl font-black text-gray-900 tracking-tight">Транзакції</h1>
+        <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Транзакції</h1>
         <p class="text-gray-500 font-medium mt-1">Керуйте своїми доходами та витратами</p>
       </div>
       <button 
         @click="openCreateModal"
-        class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-3"
+        class="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
       >
         <Plus :size="20" stroke-width="3" />
         Додати запис
@@ -209,19 +209,19 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
     </header>
 
     <!-- Filters Bar -->
-    <div class="bg-white p-8 rounded-[2rem] border border-gray-100 mb-10 shadow-2xl shadow-gray-200/50 flex flex-wrap items-end gap-6">
+    <div class="bg-white p-4 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-gray-100 mb-6 sm:mb-10 shadow-2xl shadow-gray-200/50 flex flex-wrap items-end gap-4 sm:gap-6">
       <div class="flex-1 min-w-[200px] space-y-2">
         <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Період</label>
-        <div class="flex items-center gap-3">
-          <input type="date" v-model="store.filters.startDate" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <input type="date" v-model="store.filters.startDate" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 text-sm">
           <span class="text-gray-300">—</span>
-          <input type="date" v-model="store.filters.endDate" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700">
+          <input type="date" v-model="store.filters.endDate" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 text-sm">
         </div>
       </div>
       
       <div class="w-full md:w-48 space-y-2">
         <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Тип</label>
-        <select v-model="store.filters.type" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 appearance-none">
+        <select v-model="store.filters.type" class="w-full px-4 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 appearance-none text-sm">
           <option value="">Всі операції</option>
           <option value="income">Тільки доходи</option>
           <option value="expense">Тільки витрати</option>
@@ -237,8 +237,86 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
       </button>
     </div>
 
-    <!-- Table Section -->
-    <div class="bg-white rounded-[2.5rem] shadow-2xl shadow-gray-200/50 border border-gray-50 overflow-hidden">
+    <!-- Mobile Transactions List (sm hidden) -->
+    <div class="block sm:hidden space-y-4">
+      <div v-if="store.isLoading" class="space-y-4">
+        <div v-for="i in 5" :key="i" class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm animate-pulse space-y-3">
+          <div class="flex justify-between items-center">
+            <SkeletonLoader width="100px" height="20px" />
+            <SkeletonLoader width="80px" height="24px" borderRadius="10px" />
+          </div>
+          <div class="flex justify-between items-end">
+            <div class="space-y-2">
+              <SkeletonLoader width="120px" height="16px" />
+              <SkeletonLoader width="60px" height="12px" />
+            </div>
+            <div class="flex gap-2">
+              <SkeletonLoader width="36px" height="36px" borderRadius="10px" />
+              <SkeletonLoader width="36px" height="36px" borderRadius="10px" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template v-else>
+        <div 
+          v-for="tx in store.transactions" 
+          :key="tx.transaction_id" 
+          class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all space-y-4"
+        >
+          <div class="flex justify-between items-start">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                <Calendar :size="18" />
+              </div>
+              <div class="flex flex-col">
+                <span class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ new Date(tx.transaction_date).toLocaleDateString('uk-UA') }}</span>
+                <span class="font-bold text-gray-800">{{ getCategoryName(tx.category_id) }}</span>
+              </div>
+            </div>
+            <div 
+              class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
+              :class="tx.transaction_type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+            >
+              {{ tx.transaction_type === 'income' ? 'Дохід' : 'Витрата' }}
+            </div>
+          </div>
+
+          <div v-if="tx.notes" class="text-sm text-gray-500 font-medium italic bg-gray-50 p-3 rounded-xl">
+            "{{ tx.notes }}"
+          </div>
+
+          <div class="flex justify-between items-end pt-2 border-t border-gray-50">
+            <div class="flex flex-col">
+              <div class="text-xl font-black tracking-tight" :class="tx.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'">
+                {{ tx.transaction_type === 'income' ? '+' : '-' }}
+                {{ tx.transaction_amount.toLocaleString() }} ₴
+              </div>
+              <div v-if="tx.is_foreign_currency" class="text-[10px] font-black uppercase text-gray-400 mt-1 flex items-center gap-1">
+                {{ tx.amount_original }} {{ tx.currency_code }} <span class="text-gray-200">•</span> {{ tx.exchange_rate }}
+              </div>
+            </div>
+            
+            <div class="flex gap-2">
+              <button @click="openEditModal(tx)" class="p-2.5 bg-gray-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                <Pencil :size="18" />
+              </button>
+              <button @click="deleteTx(tx.transaction_id)" class="p-2.5 bg-gray-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+                <Trash2 :size="18" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="store.transactions.length === 0" class="py-12 text-center bg-white rounded-3xl border-2 border-dashed border-gray-100">
+           <FileText :size="40" class="mx-auto text-gray-200 mb-2" />
+           <p class="font-black text-gray-300 uppercase tracking-widest text-xs">Записів не знайдено</p>
+        </div>
+      </template>
+    </div>
+
+    <!-- Table Section (Desktop only) -->
+    <div class="hidden sm:block bg-white rounded-[2.5rem] shadow-2xl shadow-gray-200/50 border border-gray-50 overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-left">
           <thead>
@@ -309,11 +387,11 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
                   </div>
                 </td>
                 <td class="px-8 py-6 text-right">
-                  <div class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                    <button @click="openEditModal(tx)" class="p-3 bg-white shadow-sm border border-gray-100 rounded-xl text-blue-600 hover:bg-blue-600 hover:text-white transition-all">
+                  <div class="flex justify-end gap-2 transition-all">
+                    <button @click="openEditModal(tx)" class="p-3 bg-gray-50 shadow-sm border border-gray-100 rounded-xl text-blue-600 hover:bg-blue-600 hover:text-white transition-all">
                       <Pencil :size="18" />
                     </button>
-                    <button @click="deleteTx(tx.transaction_id)" class="p-3 bg-white shadow-sm border border-gray-100 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                    <button @click="deleteTx(tx.transaction_id)" class="p-3 bg-gray-50 shadow-sm border border-gray-100 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all">
                       <Trash2 :size="18" />
                     </button>
                   </div>
