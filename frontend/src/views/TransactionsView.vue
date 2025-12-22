@@ -37,6 +37,7 @@ const form = reactive({ ...initialFormState });
 
 // --- 3. Форма Категорії ---
 const newCategoryName = ref('');
+const editingCategoryId = ref(null); // Додано для редагування категорій
 
 // --- Завантаження даних ---
 onMounted(async () => {
@@ -113,20 +114,37 @@ const deleteTx = async (id) => {
 const submitNewCategory = async () => {
   if (!newCategoryName.value.trim()) return;
   try {
-    await store.createNewCategory({
-      name: newCategoryName.value,
-      type: form.type,
-      user_id: userId.value
-    });
+    if (editingCategoryId.value) {
+      // Режим редагування
+      await store.modifyCategory(editingCategoryId.value, userId.value, {
+        name: newCategoryName.value
+      });
+    } else {
+      // Режим створення
+      await store.createNewCategory({
+        name: newCategoryName.value,
+        type: form.type,
+        user_id: userId.value
+      });
+    }
+    
     newCategoryName.value = '';
+    editingCategoryId.value = null;
     isCategoryModalOpen.value = false;
+    
     const list = availableCategories.value;
-    if (list.length > 0) {
+    if (list.length > 0 && !editingCategoryId.value) {
        form.category_id = list[list.length - 1].id;
     }
   } catch (e) {
     console.error(e);
+    alert(e.response?.data?.detail || "Помилка при збереженні категорії");
   }
+};
+
+const openEditCategory = (cat) => {
+  editingCategoryId.value = cat.id;
+  newCategoryName.value = cat.name;
 };
 
 const deleteCategory = async (catId) => {
@@ -529,11 +547,10 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
       </form>
     </BaseModal>
 
-    <!-- Create Category Modal -->
     <BaseModal 
       :isOpen="isCategoryModalOpen" 
-      title="Нова категорія" 
-      @close="isCategoryModalOpen = false"
+      :title="editingCategoryId ? 'Редагувати категорію' : 'Нова категорія'" 
+      @close="isCategoryModalOpen = false; editingCategoryId = null; newCategoryName = '';"
     >
       <div class="space-y-8">
         <div class="p-6 bg-gray-50 rounded-3xl border border-gray-100">
@@ -552,7 +569,7 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
           @click="submitNewCategory"
           class="w-full py-5 rounded-3xl font-black bg-gray-900 text-white hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-[0.98]"
         >
-          Створити категорію
+          {{ editingCategoryId ? 'Зберегти назву' : 'Створити категорію' }}
         </button>
 
         <div v-if="availableCategories.filter(c => c.user_id).length > 0" class="pt-8 border-t border-gray-100">
@@ -564,12 +581,20 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
               class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-50 group transition-all hover:bg-white hover:border-blue-100 hover:shadow-sm"
             >
               <span class="font-bold text-gray-700">{{ cat.name }}</span>
-              <button 
-                @click="deleteCategory(cat.id)"
-                class="p-2 text-gray-300 hover:text-red-500 transition-colors"
-              >
-                <Trash2 :size="16" />
-              </button>
+              <div class="flex items-center gap-1">
+                <button 
+                  @click="openEditCategory(cat)"
+                  class="p-2 text-gray-300 hover:text-blue-500 transition-colors"
+                >
+                  <Pencil :size="16" />
+                </button>
+                <button 
+                  @click="deleteCategory(cat.id)"
+                  class="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 :size="16" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

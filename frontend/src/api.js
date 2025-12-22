@@ -43,6 +43,11 @@ export default {
       params: { user_id: userId }
     });
   },
+  updateCategory(categoryId, userId, data) {
+    return api.patch(`/categories/${categoryId}`, data, {
+      params: { user_id: userId }
+    });
+  },
 
   // --- ПРОФІЛЬ ---
   getProfile(userId) {

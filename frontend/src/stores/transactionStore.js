@@ -141,6 +141,11 @@ export const useTransactionStore = defineStore('transactions', {
       await this.fetchCategories(); // Оновлюємо список категорій
     },
 
+    async modifyCategory(catId, userId, updateData) {
+      await api.updateCategory(catId, userId, updateData);
+      await this.fetchCategories();
+    },
+
     async removeCategory(catId, userId) {
       await api.deleteCategory(catId, userId);
       await this.fetchCategories();

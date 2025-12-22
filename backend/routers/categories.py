@@ -82,3 +82,24 @@ def delete_category(category_id: str, user_id: str):
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{category_id}")
+def update_category(category_id: str, user_id: str, payload: dict):
+    """Оновити назву власної категорії"""
+    try:
+        new_name = payload.get("name")
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Назва не може бути порожньою")
+
+        response = supabase.table("categories").update({"name": new_name})\
+            .eq("id", category_id)\
+            .eq("user_id", user_id)\
+            .execute()
+            
+        if not response.data:
+            raise HTTPException(status_code=403, detail="Не можна змінити цю категорію (вона системна або не знайдена)")
+            
+        return response.data[0]
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
