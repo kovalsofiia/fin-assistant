@@ -102,11 +102,16 @@ const changeMonth = async (delta) => {
   txStore.filters.startDate = start;
   txStore.filters.endDate = end;
   
+  // Спочатку чекаємо на оновлення транзакцій, щоб мати актуальний дохід для податків
   await Promise.all([
     txStore.fetchTransactions(),
-    txStore.fetchLifetimeSummary(),
-    profile.value?.is_fop ? fetchTaxAnalysis() : Promise.resolve()
+    txStore.fetchLifetimeSummary()
   ]);
+  
+  if (profile.value?.is_fop) {
+    await fetchTaxAnalysis();
+  }
+  
   isPageLoading.value = false;
 };
 
@@ -123,11 +128,25 @@ const monthName = computed(() => {
 const taxCalculations = computed(() => {
   if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
   
+  const isGroup3 = settings.value?.fop_group === 3;
+  const incomeIsZero = (txStore.summary.totalIncome || 0) === 0;
+
+  let ep = taxData.value.single_tax;
+  let vz = taxData.value.military_tax;
+  const esv = taxData.value.esv;
+
+  // Для 3-ї групи податки (ЄП та ВЗ) нараховуються лише на дохід.
+  // Якщо доходу за період немає - ці податки мають бути 0.
+  if (isGroup3 && incomeIsZero) {
+    ep = 0;
+    vz = 0;
+  }
+
   return {
-    ep: taxData.value.single_tax,
-    vz: taxData.value.military_tax,
-    esv: taxData.value.esv,
-    total: taxData.value.total_monthly_tax
+    ep,
+    vz,
+    esv,
+    total: ep + vz + esv
   };
 });
 
@@ -167,7 +186,7 @@ const realBalance = computed(() => {
 // Чистий дохід після податків (поточний період)
 const realProfit = computed(() => {
   if (!profile.value?.is_fop || !taxData.value) return txStore.summary.netProfit;
-  return txStore.summary.netProfit - taxData.value.total_monthly_tax;
+  return txStore.summary.netProfit - taxCalculations.value.total;
 });
 
 // Форматування валюти
