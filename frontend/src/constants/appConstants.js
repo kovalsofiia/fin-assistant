@@ -9,12 +9,21 @@ export const APP_CONSTANTS = {
     DANGER: '#EF4444',
   },
 
-  // Податкові константи 2025
+  // Податкові константи
   TAX_2025: {
     ESV_MONTHLY: 1760.0,
     SINGLE_TAX_G1: 302.80,
     SINGLE_TAX_G2: 1600.0,
-    FIXED_MILITARY_TAX: 800.0, // Для 1, 2, 4 груп
+    FIXED_MILITARY_TAX: 800.0,
+    GROUP_3_RATE: 0.05,
+    GROUP_3_RATE_VAT: 0.03,
+    GROUP_3_MILITARY_RATE: 0.01,
+  },
+  TAX_2026: {
+    ESV_MONTHLY: 1902.34,
+    SINGLE_TAX_G1: 302.80,
+    SINGLE_TAX_G2: 1600.0,
+    FIXED_MILITARY_TAX: 800.0,
     GROUP_3_RATE: 0.05,
     GROUP_3_RATE_VAT: 0.03,
     GROUP_3_MILITARY_RATE: 0.01,

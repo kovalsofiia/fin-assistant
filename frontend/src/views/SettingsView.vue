@@ -19,7 +19,9 @@ import {
   Save,
   Loader2
 } from 'lucide-vue-next';
+import { useTaxRulesStore } from '../stores/taxRulesStore';
 
+const taxRulesStore = useTaxRulesStore();
 const router = useRouter();
 const isLoading = ref(false);
 const isSaving = ref(false);
@@ -81,7 +83,11 @@ const loadData = async () => {
     // 2. Отримуємо налаштування ФОП (тільки якщо користувач є ФОП)
     if (profile.value.is_fop) {
       try {
-        const settingsRes = await api.getFopSettings(userId.value);
+        const [settingsRes, rules] = await Promise.all([
+          api.getFopSettings(userId.value),
+          taxRulesStore.fetchRules(new Date().getFullYear(), new Date().getMonth() + 1)
+        ]);
+
         if (settingsRes.data) {
           fopSettings.value = {
             fop_group: settingsRes.data.fop_group,
@@ -98,20 +104,20 @@ const loadData = async () => {
             normative_land_value: settingsRes.data.normative_land_value || 0
           };
           
-          // Ініціалізуємо суми на основі групи та констант (бо вони не в БД)
+          // Ініціалізуємо суми на основі групи та ПРАВИЛ з бази
           const group = parseInt(fopSettings.value.fop_group);
           if (group === 1) {
-            fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G1;
-            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+            fopSettings.value.single_tax_value = rules.single_tax_g1;
+            fopSettings.value.military_tax_value = rules.fixed_military_tax;
           } else if (group === 2) {
-            fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G2;
-            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+            fopSettings.value.single_tax_value = rules.single_tax_g2;
+            fopSettings.value.military_tax_value = rules.fixed_military_tax;
           } else if (group === 4) {
-            fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+            fopSettings.value.military_tax_value = rules.fixed_military_tax;
           }
         }
       } catch (e) {
-        console.warn("Settings not found, using defaults");
+        console.warn("Settings or rules not found, using defaults", e);
       }
     }
 
@@ -214,15 +220,17 @@ watch(() => fopSettings.value.fop_group, (newGroup) => {
     fopSettings.value.employees_count = 0;
   }
   
-  // Автоматичне підставлення ставок при зміні групи (якщо вони порожні або дефолтні)
+  // Автоматичне підставлення ставок при зміні групи (з динамічних правил)
+  const rules = taxRulesStore.currentRules || {};
+  
   if (group === 1) {
-    fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G1;
-    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.single_tax_value = rules.single_tax_g1;
+    fopSettings.value.military_tax_value = rules.fixed_military_tax;
     fopSettings.value.income_tax_percent = 0;
     fopSettings.value.military_tax_percent = 0;
   } else if (group === 2) {
-    fopSettings.value.single_tax_value = APP_CONSTANTS.TAX_2025.SINGLE_TAX_G2;
-    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.single_tax_value = rules.single_tax_g2;
+    fopSettings.value.military_tax_value = rules.fixed_military_tax;
     fopSettings.value.income_tax_percent = 0;
     fopSettings.value.military_tax_percent = 0;
   } else if (group === 3) {
@@ -231,7 +239,7 @@ watch(() => fopSettings.value.fop_group, (newGroup) => {
     fopSettings.value.single_tax_value = 0;
     fopSettings.value.military_tax_value = 0;
   } else if (group === 4) {
-    fopSettings.value.military_tax_value = APP_CONSTANTS.TAX_2025.FIXED_MILITARY_TAX;
+    fopSettings.value.military_tax_value = rules.fixed_military_tax;
     fopSettings.value.single_tax_value = 0;
     fopSettings.value.income_tax_percent = 0;
     fopSettings.value.military_tax_percent = 0;
@@ -535,12 +543,12 @@ onMounted(() => {
                   <input 
                     type="number" 
                     min="0"
+                    step="0.01"
                     v-model.number="fopSettings.esv_value" 
-                    :disabled="fopSettings.fop_group === 1 || fopSettings.fop_group === 2"
-                    :class="[fopSettings.fop_group === 1 || fopSettings.fop_group === 2 ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-transparent' : 'bg-white text-gray-800 border-transparent focus:border-indigo-500']"
-                    class="px-4 py-3 border-2 rounded-xl outline-none transition-all font-bold"
+                    :class="[fopSettings.fop_group === 1 || fopSettings.fop_group === 2 ? 'bg-indigo-50/30' : 'bg-white text-gray-800']"
+                    class="px-4 py-3 border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800 w-full"
                   >
-                  <span v-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 2" class="text-[8px] text-gray-400 font-bold px-1 uppercase tracking-tighter">Фіксована ставка для G1/G2</span>
+                  <span v-if="fopSettings.fop_group === 1 || fopSettings.fop_group === 2" class="text-[8px] text-gray-400 font-bold px-1 uppercase tracking-tighter">Зазвичай 1760.00 грн (22% від мін. з/п)</span>
               </div>
             </div>
 

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
+from datetime import date as date_type
 from typing import Optional
 from services.tax_service import TaxService
 from models.setting import FopSettingsBase
@@ -12,7 +13,8 @@ def calculate_tax(
     user_id: str,
     annual_income: float = 0.0,
     monthly_income: float = 0.0,
-    period: ReportingPeriod = ReportingPeriod.MONTH
+    period: ReportingPeriod = ReportingPeriod.MONTH,
+    calc_date: Optional[date_type] = None
 ):
     """
     Розрахунок податків на основі налаштувань користувача та доходу.
@@ -37,7 +39,7 @@ def calculate_tax(
         # 4. Рахуємо податки
         # Для розрахунку використовуємо або місячний дохід, або річний розділений на місяці
         income_for_calc = monthly_income if monthly_income > 0 else (annual_income / 12)
-        taxes = TaxService.calculate_taxes(settings, income_for_calc, period)
+        taxes = TaxService.calculate_taxes(user_id, settings, income_for_calc, period, calc_date)
         
         # 5. Календар
         calendar = TaxService.get_payment_calendar()
@@ -50,4 +52,16 @@ def calculate_tax(
     except Exception as e:
         if isinstance(e, HTTPException): raise e
         print(f"Tax Calculation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/rules")
+def get_tax_rules(year: int, month: int):
+    """
+    Повертає глобальні правила оподаткування для вказаного періоду.
+    """
+    try:
+        rules = TaxService.get_tax_rules(year, month)
+        return rules
+    except Exception as e:
+        print(f"Error in /tax/rules: {e}")
         raise HTTPException(status_code=500, detail=str(e))

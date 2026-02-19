@@ -70,6 +70,9 @@ export default {
   updateFopSettings(userId, data) {
     return api.patch(`/settings/${userId}`, data);
   },
+  getTaxRules(year, month) {
+    return api.get('/tax/rules', { params: { year, month } });
+  },
 
   // === ДОДАЙТЕ ЦІ РЯДКИ, ЩОБ ВИПРАВИТИ ПОМИЛКУ ===
   // Дозволяє викликати api.get, api.post, api.patch напряму з компонентів

@@ -2,8 +2,11 @@
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import { Calculator, Info } from 'lucide-vue-next';
 import { APP_CONSTANTS } from '@/constants/appConstants';
+import { useTaxRulesStore } from '@/stores/taxRulesStore';
+import { computed } from 'vue';
 
-const tax = APP_CONSTANTS.TAX_2025;
+const taxRulesStore = useTaxRulesStore();
+const rules = computed(() => taxRulesStore.currentRules || APP_CONSTANTS.TAX_2025);
 
 defineProps({
   calculations: {
@@ -29,7 +32,7 @@ defineProps({
         Податковий розрахунок
       </h2>
       <p v-if="settings" class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">
-        ФОП {{ settings.fop_group }}-ї групи • 2025
+        ФОП {{ settings.fop_group }}-ї групи • {{ rules.year || '2025' }}
       </p>
     </div>
     
@@ -55,8 +58,8 @@ defineProps({
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
         <div class="flex flex-col">
           <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Військовий збір</span>
-          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ tax.GROUP_3_MILITARY_RATE * 100 }}%</span>
-          <span class="text-sm font-bold text-gray-700" v-else>Фіксовано {{ tax.FIXED_MILITARY_TAX }} ₴</span>
+          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ (rules.GROUP_3_MILITARY_RATE || 0.01) * 100 }}%</span>
+          <span class="text-sm font-bold text-gray-700" v-else>Фіксовано {{ rules.fixed_military_tax || rules.FIXED_MILITARY_TAX }} ₴</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
         <span v-else class="font-black text-gray-900">{{ (calculations.vz || 0).toFixed(2) }} ₴</span>
@@ -65,7 +68,7 @@ defineProps({
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
         <div class="flex flex-col">
           <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">ЄСВ</span>
-          <span class="text-sm font-bold text-gray-700">Ставка (мін. {{ tax.ESV_MONTHLY }})</span>
+          <span class="text-sm font-bold text-gray-700">Ставка (мін. {{ (rules.esv_value || rules.ESV_MONTHLY || 0).toFixed(2) }})</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
         <span v-else class="font-black text-gray-900">{{ (calculations.esv || 0).toFixed(2) }} ₴</span>
