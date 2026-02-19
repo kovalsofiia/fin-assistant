@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
-import { supabase } from '@/supabase';
+import { supabase } from '@/services/supabase';
 import BaseModal from '@/components/common/BaseModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import { Check, Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info } from 'lucide-vue-next';

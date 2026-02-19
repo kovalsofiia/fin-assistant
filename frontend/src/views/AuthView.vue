@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { supabase } from '@/supabase';
-import api from '@/api';
+import { supabase } from '@/services/supabase';
+import api from '@/services/api';
 import { Wallet, AlertCircle, Loader2 } from 'lucide-vue-next';
 
 const router = useRouter();

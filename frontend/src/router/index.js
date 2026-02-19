@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { supabase } from '@/supabase'; // Для перевірки сесії
+import { supabase } from '@/services/supabase'; // Для перевірки сесії
 
 import AuthView from '@/views/AuthView.vue';
 import OnboardingView from '@/views/OnboardingView.vue';

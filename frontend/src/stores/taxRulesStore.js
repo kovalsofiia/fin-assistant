@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import api from '@/api';
+import api from '@/services/api';
 import { APP_CONSTANTS } from '@/constants/appConstants';
 
 export const useTaxRulesStore = defineStore('taxRules', {

@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '@/api'; 
-import { supabase } from '@/supabase';
+import api from '@/services/api'; 
+import { supabase } from '@/services/supabase';
 import { KVED_SECTIONS } from '@/constants/kveds';
 import { 
   ArrowLeft, 

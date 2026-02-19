@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
-import api from '@/api';
-import { supabase } from '@/supabase';
+import api from '@/services/api';
+import { supabase } from '@/services/supabase';
 
 export const useOnboardingStore = defineStore('onboarding', {
   state: () => ({

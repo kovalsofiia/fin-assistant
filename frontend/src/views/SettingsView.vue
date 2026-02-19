@@ -2,8 +2,8 @@
   
 import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import api from '@/api'; 
-import { supabase } from '@/supabase';
+import api from '@/services/api'; 
+import { supabase } from '@/services/supabase';
 import BaseModal from '../components/common/BaseModal.vue'; 
 import { KVED_SECTIONS } from '../constants/kveds';
 import { APP_CONSTANTS } from '../constants/appConstants';

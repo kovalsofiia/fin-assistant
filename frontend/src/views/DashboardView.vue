@@ -1,8 +1,8 @@
 <script setup>
 import { onMounted, computed, ref, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
-import api from '@/api';
-import { supabase } from '@/supabase';
+import api from '@/services/api';
+import { supabase } from '@/services/supabase';
 import { APP_CONSTANTS } from '@/constants/appConstants';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
 

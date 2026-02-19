@@ -1,13 +1,7 @@
-import os
 from supabase import create_client, Client
-from dotenv import load_dotenv
+from core.config import settings
 
-load_dotenv()
-
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_KEY")
-
-if not url or not key:
+if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
     raise ValueError("Помилка: Немає ключів Supabase у .env. Перевір файл!")
 
-supabase: Client = create_client(url, key)
+supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)

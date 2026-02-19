@@ -1,19 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import transactions, categories, profiles, settings, tax
+from core.config import settings
+from routers import transactions, categories, profiles, settings as app_settings, tax_rules
 
-app = FastAPI(title="FOP Assistant API 🇺🇦")
+app = FastAPI(title=settings.PROJECT_NAME)
 
 # 2. CORS (Дозволяємо фронтенду доступ)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174"
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,5 +23,5 @@ def read_root():
 app.include_router(transactions.router)
 app.include_router(categories.router)
 app.include_router(profiles.router)
-app.include_router(settings.router)
-app.include_router(tax.router)
+app.include_router(app_settings.router)
+app.include_router(tax_rules.router)

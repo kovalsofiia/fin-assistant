@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { RouterView, useRouter, useRoute } from 'vue-router';
-import { supabase } from '@/supabase';
+import { supabase } from '@/services/supabase';
 import { 
   Wallet, 
   LayoutDashboard, 
