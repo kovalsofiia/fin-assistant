@@ -3,28 +3,40 @@ import api from '@/services/api';
 import { supabase } from '@/services/supabase';
 
 export const useTransactionStore = defineStore('transactions', {
-  state: () => ({
-    transactions: [],
-    categories: [], // { income: [], expense: [], all: [] }
-    filters: {
+  state: () => {
+    let savedFilters = {
       startDate: '',
       endDate: '',
-      type: '' // 'income', 'expense' або ''
-    },
-    summary: {
-      totalIncome: 0,
-      totalExpense: 0,
-      netProfit: 0
-    },
-    lifetimeSummary: {
-      totalIncome: 0,
-      totalExpense: 0,
-      balance: 0,
-      monthsCount: 0
-    },
-    isLoading: false,
-    error: null
-  }),
+      type: ''
+    };
+    try {
+      const stored = localStorage.getItem('transaction_filters');
+      if (stored) {
+        savedFilters = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Error parsing saved filters:", e);
+    }
+
+    return {
+      transactions: [],
+      categories: [], // { income: [], expense: [], all: [] }
+      filters: savedFilters,
+      summary: {
+        totalIncome: 0,
+        totalExpense: 0,
+        netProfit: 0
+      },
+      lifetimeSummary: {
+        totalIncome: 0,
+        totalExpense: 0,
+        balance: 0,
+        monthsCount: 0
+      },
+      isLoading: false,
+      error: null
+    };
+  },
 
   actions: {
     // Допоміжна функція для отримання меж місяця
@@ -61,6 +73,9 @@ export const useTransactionStore = defineStore('transactions', {
         if (this.filters.startDate) params.start_date = this.filters.startDate;
         if (this.filters.endDate) params.end_date = this.filters.endDate;
         if (this.filters.type) params.type = this.filters.type;
+
+        // Save filters to localStorage
+        localStorage.setItem('transaction_filters', JSON.stringify(this.filters));
 
         const txRes = await api.getTransactions(user.id, params);
         this.transactions = txRes.data;
