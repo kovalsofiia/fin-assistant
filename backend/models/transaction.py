@@ -31,3 +31,7 @@ class TransactionPatch(BaseModel):
     date: Optional[date_type] = None
     currency: Optional[str] = Field(None, pattern=CURRENCY_REGEX)
     manual_rate: Optional[float] = Field(None, gt=MIN_MANUAL_RATE)
+
+class TransactionBatchDelete(BaseModel):
+    user_id: str
+    transaction_ids: list[str]

@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useTransactionStore } from '@/stores/transactionStore';
 import api from '@/services/api';
 import { supabase } from '@/services/supabase';
@@ -13,10 +14,12 @@ const taxRulesStore = useTaxRulesStore();
 // Тут я припускаю, що ми використовуємо їх прямо в шаблоні або імпортуємо оновлені версії.
 import StatCard from '@/components/dashboard/StatCard.vue';
 import TaxWidget from '@/components/dashboard/TaxWidget.vue';
+import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock } from 'lucide-vue-next';
 
 const txStore = useTransactionStore();
+const router = useRouter();
 const settings = ref(null);
 const profile = ref(null);
 const userId = ref(null);
@@ -24,6 +27,27 @@ const isPageLoading = ref(true);
 const taxData = ref(null);
 const taxWarnings = ref([]);
 const paymentCalendar = ref([]);
+
+// Transaction Details
+const isDetailModalOpen = ref(false);
+const selectedTransaction = ref(null);
+
+const openTransactionDetails = (tx) => {
+  selectedTransaction.value = tx;
+  isDetailModalOpen.value = true;
+};
+
+const handleTransactionUpdate = async () => {
+  await Promise.all([
+    txStore.fetchTransactions(),
+    txStore.fetchLifetimeSummary()
+  ]);
+  if (profile.value?.is_fop) {
+    await fetchTaxAnalysis();
+  }
+  isDetailModalOpen.value = false;
+  router.push('/transactions');
+};
 
 // Фільтрація періоду
 const currentDate = new Date();
@@ -357,11 +381,16 @@ const getCategoryName = (id) => {
         </div>
         
         <ul v-else class="divide-y divide-gray-100">
-          <li v-for="tx in txStore.transactions.slice(0, 5)" :key="tx.transaction_id" class="p-4 hover:bg-gray-50 transition-colors flex justify-between items-center">
+          <li 
+            v-for="tx in txStore.transactions.slice(0, 5)" 
+            :key="tx.transaction_id" 
+            @click="openTransactionDetails(tx)"
+            class="p-4 hover:bg-gray-50 transition-colors flex justify-between items-center cursor-pointer group"
+          >
             
             <div class="flex items-center gap-3">
               <!-- Icon based on type -->
-              <div :class="['p-2 rounded-full shrink-0', tx.transaction_type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600']">
+              <div :class="['p-2 rounded-full shrink-0 transition-transform group-hover:scale-110', tx.transaction_type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600']">
                 <component 
                   :is="tx.transaction_type === 'income' ? ArrowDownLeft : ArrowUpRight" 
                   class="w-5 h-5"
@@ -395,6 +424,17 @@ const getCategoryName = (id) => {
         </ul>
       </div>
     </div>
+
+    <!-- Transaction Detail Modal -->
+    <TransactionModal 
+      :isOpen="isDetailModalOpen"
+      :transaction="selectedTransaction"
+      :userId="userId"
+      :fopSettings="settings"
+      @close="isDetailModalOpen = false; selectedTransaction = null"
+      @updated="handleTransactionUpdate"
+      @deleted="handleTransactionUpdate"
+    />
   </div>
 </template>
 

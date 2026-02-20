@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from core.database import supabase
 from services.nbu_service import get_nbu_rate
-from models.transaction import TransactionCreate, TransactionPatch  
+from models.transaction import TransactionCreate, TransactionPatch, TransactionBatchDelete
 from datetime import date as date_type
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
@@ -45,7 +45,7 @@ def create_transaction(tx: TransactionCreate):
     try:
         response = supabase.table("transactions").insert(data_to_insert).execute()
         return {
-            "message": "✅ Транзакцію успішно створено",
+            "message": "Транзакцію успішно створено",
             "used_rate": final_rate,
             "amount_uah": round(amount_uah, 2),
             "db_response": response.data
@@ -175,7 +175,7 @@ def delete_transaction(transaction_id: str, user_id: str):
             .eq("user_id", user_id)\
             .execute()
             
-        return {"message": "✅ Транзакцію видалено"}
+        return {"message": "Транзакцію видалено"}
         
     except Exception as e:
         # Якщо це наша помилка 404 - прокидаємо її далі
@@ -183,7 +183,31 @@ def delete_transaction(transaction_id: str, user_id: str):
             raise e
         print(f"Error deleting: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+@router.delete("/batch/delete")
+def delete_transactions_batch(batch: TransactionBatchDelete):
+    """
+    Видаляє кілька транзакцій за раз.
+    """
+    try:
+        if not batch.transaction_ids:
+            return {"message": "Немає транзакцій для видалення", "deleted_count": 0}
+
+        # Видаляємо всі транзакції, які належать юзеру та є в списку
+        response = supabase.table("transactions")\
+            .delete()\
+            .eq("user_id", batch.user_id)\
+            .in_("transaction_id", batch.transaction_ids)\
+            .execute()
+            
+        return {
+            "message": f"Видалено {len(response.data)} транзакцій",
+            "deleted_count": len(response.data)
+        }
+    except Exception as e:
+        print(f"Batch delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.patch("/{transaction_id}")
 def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch):
     """
@@ -278,7 +302,7 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
             .execute()
             
         return {
-            "message": "✅ Транзакцію оновлено (PATCH)",
+            "message": "Транзакцію оновлено (PATCH)",
             "changes": data_to_update,
             "full_data": response.data
         }

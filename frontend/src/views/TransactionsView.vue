@@ -3,8 +3,11 @@ import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { supabase } from '@/services/supabase';
 import BaseModal from '@/components/common/BaseModal.vue';
+import TransactionModal from '@/components/dashboard/TransactionModal.vue';
+import TransactionForm from '@/components/common/TransactionForm.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
-import { Check, Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info } from 'lucide-vue-next';
+import { Check, Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info, X } from 'lucide-vue-next';
+import api from '@/services/api';
 
 const store = useTransactionStore();
 const userId = ref(null);
@@ -13,9 +16,50 @@ const userId = ref(null);
 const isModalOpen = ref(false);
 const isCategoryModalOpen = ref(false); 
 const isSubmitting = ref(false);
-const editingTxId = ref(null); 
+const editingTxId = ref(null);
 const fopSettings = ref(null);
 const userProfile = ref(null);
+
+// --- New Detail Modal & Selection ---
+const isDetailModalOpen = ref(false);
+const selectedTransaction = ref(null);
+const selectedTxIds = ref([]);
+
+const openTransactionDetails = (tx) => {
+  selectedTransaction.value = tx;
+  isDetailModalOpen.value = true;
+};
+
+const toggleSelection = (txId) => {
+  const index = selectedTxIds.value.indexOf(txId);
+  if (index > -1) {
+    selectedTxIds.value.splice(index, 1);
+  } else {
+    selectedTxIds.value.push(txId);
+  }
+};
+
+const toggleSelectAll = () => {
+  if (selectedTxIds.value.length === store.transactions.length) {
+    selectedTxIds.value = [];
+  } else {
+    selectedTxIds.value = store.transactions.map(t => t.transaction_id);
+  }
+};
+
+const deleteBatch = async () => {
+  if (selectedTxIds.value.length === 0) return;
+  if (confirm(`Видалити вибрані транзакції (${selectedTxIds.value.length})?`)) {
+    try {
+      await store.deleteTransactionsBatch(userId.value, selectedTxIds.value);
+      selectedTxIds.value = [];
+    } catch (e) {
+      alert("Помилка при видаленні");
+    }
+  }
+};
+
+
 
 // --- 1. Фільтри ---
 watch(() => store.filters, () => {
@@ -72,7 +116,6 @@ const availableCategories = computed(() => {
 const openCreateModal = () => {
   editingTxId.value = null; 
   Object.assign(form, initialFormState); 
-  setTimeout(() => autoSelectCategory(), 10);
   isModalOpen.value = true;
 };
 
@@ -166,48 +209,10 @@ const getCategoryName = (id) => {
   return found ? found.name : '...';
 };
 
-const originalEditingType = ref(null);
-
-const openEditModal = (tx) => {
-  editingTxId.value = tx.transaction_id;
-  originalEditingType.value = tx.transaction_type; 
-  form.type = tx.transaction_type;
-  form.amount = tx.amount_original || tx.transaction_amount; 
-  form.date = tx.transaction_date.split('T')[0]; 
-  form.category_id = tx.category_id;
-  form.description = tx.notes;
-  form.isZed = tx.is_foreign_currency;
-  form.currency = tx.currency_code;
-  form.manual_rate = tx.exchange_rate === 1.0 ? '' : tx.exchange_rate;
-  isModalOpen.value = true;
+const handleUpdate = async () => {
+  await store.fetchTransactions();
+  isDetailModalOpen.value = false;
 };
-
-const handleTypeChange = (newType) => {
-  if (editingTxId.value && newType !== originalEditingType.value) {
-    if (!confirm(`Змінити тип на ${newType === 'income' ? 'Дохід' : 'Витрата'}?`)) return;
-  }
-  form.type = newType;
-  form.category_id = '';
-  if (availableCategories.value.length > 0) {
-    form.category_id = availableCategories.value[0].id;
-  }
-};
-
-const autoSelectCategory = () => {
-  const list = availableCategories.value;
-  if (!list || list.length === 0) return;
-  if (form.type === 'income') {
-    const searchKey = form.isZed ? 'ЗЕД' : 'Гривня'; 
-    const found = list.find(c => c.name.toLowerCase().includes(searchKey.toLowerCase()));
-    if (found) form.category_id = found.id;
-    else if (!form.category_id) form.category_id = list[0].id;
-  } else {
-    if (!form.category_id && list.length > 0) form.category_id = list[0].id;
-  }
-};
-
-watch(() => form.isZed, () => autoSelectCategory());
-watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
 </script>
 
 <template>
@@ -217,13 +222,30 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
         <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Транзакції</h1>
         <p class="text-gray-500 font-medium mt-1">Керуйте своїми доходами та витратами</p>
       </div>
-      <button 
-        @click="openCreateModal"
-        class="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
-      >
-        <Plus :size="20" stroke-width="3" />
-        Додати запис
-      </button>
+      <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+        <button 
+          v-if="selectedTxIds.length > 0"
+          @click="deleteBatch"
+          class="w-full md:w-auto bg-red-50 text-red-600 px-6 py-4 rounded-2xl font-black border-2 border-red-100 hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+        >
+          <Trash2 :size="18" />
+          Видалити ({{ selectedTxIds.length }})
+        </button>
+        <button 
+          v-if="selectedTxIds.length > 0"
+          @click="selectedTxIds = []"
+          class="w-full md:w-auto bg-gray-50 text-gray-500 px-6 py-4 rounded-2xl font-black hover:bg-gray-100 transition-all"
+        >
+          Скасувати
+        </button>
+        <button 
+          @click="openCreateModal"
+          class="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+        >
+          <Plus :size="20" stroke-width="3" />
+          Додати запис
+        </button>
+      </div>
     </header>
 
     <!-- Filters Bar -->
@@ -280,9 +302,20 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
         <div 
           v-for="tx in store.transactions" 
           :key="tx.transaction_id" 
-          class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all space-y-4"
+          class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all space-y-4 relative"
+          :class="{ 'border-blue-500 bg-blue-50/30': selectedTxIds.includes(tx.transaction_id) }"
         >
-          <div class="flex justify-between items-start">
+          <!-- Selection Checkbox (Mobile) -->
+          <div class="absolute top-4 right-4 z-10">
+            <input 
+              type="checkbox" 
+              :checked="selectedTxIds.includes(tx.transaction_id)" 
+              @click.stop="toggleSelection(tx.transaction_id)"
+              class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all"
+            >
+          </div>
+
+          <div class="flex justify-between items-start" @click="openTransactionDetails(tx)">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
                 <Calendar :size="18" />
@@ -316,10 +349,10 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
             </div>
             
             <div class="flex gap-2">
-              <button @click="openEditModal(tx)" class="p-2.5 bg-gray-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
-                <Pencil :size="18" />
+              <button @click.stop="openTransactionDetails(tx)" class="p-2.5 bg-gray-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                <Info :size="18" />
               </button>
-              <button @click="deleteTx(tx.transaction_id)" class="p-2.5 bg-gray-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+              <button @click.stop="deleteTx(tx.transaction_id)" class="p-2.5 bg-gray-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
                 <Trash2 :size="18" />
               </button>
             </div>
@@ -339,11 +372,18 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
         <table class="w-full text-left">
           <thead>
             <tr class="bg-gray-50/50 border-b border-gray-50">
+              <th class="px-8 py-6 w-10">
+                <input 
+                  type="checkbox" 
+                  :checked="selectedTxIds.length === store.transactions.length && store.transactions.length > 0" 
+                  @change="toggleSelectAll"
+                  class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all cursor-pointer"
+                >
+              </th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Дата</th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Категорія</th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Коментар</th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Сума</th>
-              <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Дії</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
@@ -373,7 +413,21 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
 
             <!-- Actual Data -->
             <template v-else>
-              <tr v-for="tx in store.transactions" :key="tx.transaction_id" class="group hover:bg-gray-50/50 transition-all">
+              <tr 
+                v-for="tx in store.transactions" 
+                :key="tx.transaction_id" 
+                class="group hover:bg-gray-50/50 transition-all cursor-pointer"
+                :class="{ 'bg-blue-50/30': selectedTxIds.includes(tx.transaction_id) }"
+                @click="openTransactionDetails(tx)"
+              >
+                <td class="px-8 py-6" @click.stop>
+                  <input 
+                    type="checkbox" 
+                    :checked="selectedTxIds.includes(tx.transaction_id)" 
+                    @change="toggleSelection(tx.transaction_id)"
+                    class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all cursor-pointer"
+                  >
+                </td>
                 <td class="px-8 py-6">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-white group-hover:shadow-sm transition-all">
@@ -404,16 +458,6 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
                     </div>
                   </div>
                 </td>
-                <td class="px-8 py-6 text-right">
-                  <div class="flex justify-end gap-2 transition-all">
-                    <button @click="openEditModal(tx)" class="p-3 bg-gray-50 shadow-sm border border-gray-100 rounded-xl text-blue-600 hover:bg-blue-600 hover:text-white transition-all">
-                      <Pencil :size="18" />
-                    </button>
-                    <button @click="deleteTx(tx.transaction_id)" class="p-3 bg-gray-50 shadow-sm border border-gray-100 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all">
-                      <Trash2 :size="18" />
-                    </button>
-                  </div>
-                </td>
               </tr>
               <tr v-if="store.transactions.length === 0">
                 <td colspan="5" class="px-8 py-20 text-center">
@@ -439,111 +483,13 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
       :title="editingTxId ? 'Редагувати запис' : 'Створити запис'" 
       @close="isModalOpen = false"
     >
-      <form @submit.prevent="submitTransaction" class="space-y-8">
-        <!-- Type Selector -->
-        <div class="flex p-2 bg-gray-100 rounded-[2rem] gap-2">
-          <button 
-            type="button"
-            class="flex-1 py-4 px-6 rounded-[1.5rem] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all"
-            :class="form.type === 'expense' ? 'bg-white shadow-xl text-red-600' : 'text-gray-400 hover:text-gray-600'"
-            @click.prevent="handleTypeChange('expense')"
-          >
-            <ArrowDownLeft :size="18" stroke-width="3" />
-            Витрата
-          </button>
-          <button 
-            type="button"
-            class="flex-1 py-4 px-6 rounded-[1.5rem] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all"
-            :class="form.type === 'income' ? 'bg-white shadow-xl text-green-600' : 'text-gray-400 hover:text-gray-600'"
-            @click.prevent="handleTypeChange('income')"
-          >
-            <ArrowUpRight :size="18" stroke-width="3" />
-            Дохід
-          </button>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="space-y-2">
-            <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
-              <DollarSign :size="14" /> Сума
-            </label>
-            <input type="number" step="0.01" v-model="form.amount" required class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-black text-gray-800 text-xl">
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
-              <Calendar :size="14" /> Дата
-            </label>
-            <input type="date" v-model="form.date" required class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800">
-          </div>
-        </div>
-
-        <!-- ZED/FX Row (Multi-currency) -->
-        <div class="group">
-          <label 
-            class="flex items-center gap-4 bg-blue-50/50 p-5 rounded-3xl border-2 border-dashed border-blue-100 transition-all shadow-sm"
-            :class="[fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4 ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer hover:bg-white hover:border-blue-200 hover:shadow-md']"
-          >
-            <div class="relative w-7 h-7 shrink-0">
-              <input 
-                type="checkbox" 
-                v-model="form.isZed" 
-                :disabled="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4"
-                class="peer appearance-none w-7 h-7 border-2 border-blue-200 checked:bg-blue-600 checked:border-blue-600 rounded-xl transition-all shadow-inner disabled:bg-gray-200 disabled:border-gray-300"
-              >
-              <div class="absolute inset-0 flex items-center justify-center text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-all scale-50 peer-checked:scale-100">
-                <Check :size="16" stroke-width="4" />
-              </div>
-            </div>
-            <div class="flex flex-col">
-              <span class="font-black text-blue-900 uppercase tracking-widest text-[10px] group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                Операція в іноземній валюті
-                <span v-if="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4" class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[8px]">Заборонено для {{ fopSettings.fop_group }} групи</span>
-              </span>
-              <span v-if="fopSettings?.fop_group === 1 || fopSettings?.fop_group === 4" class="text-[9px] text-gray-500 font-medium mt-0.5">ФОП 1 та 4 груп не можуть здійснювати зовнішньоекономічну діяльність</span>
-            </div>
-          </label>
-          
-          <div v-if="form.isZed" class="mt-6 grid grid-cols-2 gap-4 animate-fade-in">
-            <select v-model="form.currency" class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-700">
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-            </select>
-            <input type="number" step="0.0001" v-model="form.manual_rate" placeholder="Курс (пусто = НБУ)" class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-700">
-          </div>
-        </div>
-
-        <!-- Category Select -->
-        <div class="space-y-2">
-          <div class="flex justify-between items-center px-1">
-            <label class="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Tag :size="14" /> Категорія
-            </label>
-            <button @click="isCategoryModalOpen = true" type="button" class="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline underline-offset-4">
-              + Створити
-            </button>
-          </div>
-          <select v-model="form.category_id" required class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800">
-             <option value="" disabled>Оберіть категорію</option>
-             <option v-for="cat in availableCategories" :key="cat.id" :value="cat.id">
-               {{ cat.name }} {{ cat.user_id ? '(своя)' : '' }}
-             </option>
-          </select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
-            <FileText :size="14" /> Опис
-          </label>
-          <textarea v-model="form.description" rows="2" class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800 resize-none"></textarea>
-        </div>
-
-        <button 
-          type="submit" 
-          :disabled="isSubmitting"
-          class="w-full py-5 rounded-3xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 transition-all shadow-xl shadow-blue-100 disabled:opacity-50 flex justify-center items-center gap-3 active:scale-[0.98]"
-        >
-          {{ isSubmitting ? 'Завантаження...' : 'Зберегти зміни' }}
-        </button>
+      <form @submit.prevent="submitTransaction">
+        <TransactionForm 
+          v-model="form"
+          :fopSettings="fopSettings"
+          :isSubmitting="isSubmitting"
+          @add-category="isCategoryModalOpen = true"
+        />
       </form>
     </BaseModal>
 
@@ -600,6 +546,17 @@ watch(() => form.type, () => setTimeout(() => autoSelectCategory(), 10));
         </div>
       </div>
     </BaseModal>
+
+    <!-- Transaction Detail Modal -->
+    <TransactionModal 
+      :isOpen="isDetailModalOpen"
+      :transaction="selectedTransaction"
+      :userId="userId"
+      :fopSettings="fopSettings"
+      @close="isDetailModalOpen = false; selectedTransaction = null"
+      @updated="handleUpdate"
+      @deleted="handleUpdate"
+    />
   </div>
 </template>
 
