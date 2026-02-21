@@ -2,12 +2,16 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
 import BaseModal from '@/components/common/BaseModal.vue';
+import CategoryModal from '@/components/common/CategoryModal.vue';
 import TransactionForm from '@/components/common/TransactionForm.vue';
 import { 
   Pencil, Trash2, Calendar, Tag, FileText, 
   ArrowUpRight, ArrowDownLeft
 } from 'lucide-vue-next';
 import api from '@/services/api';
+import { useNotificationStore } from '@/stores/notificationStore';
+
+const notificationStore = useNotificationStore();
 
 const props = defineProps({
   isOpen: Boolean,
@@ -21,6 +25,9 @@ const emit = defineEmits(['close', 'updated', 'deleted']);
 const txStore = useTransactionStore();
 const isEditing = ref(false);
 const isSubmitting = ref(false);
+
+// Category creation state
+const isCategoryModalOpen = ref(false);
 
 const initialFormState = {
   type: 'expense',
@@ -128,6 +135,19 @@ const close = () => {
   emit('close');
 };
 
+const handleOpenCategory = () => {
+  isCategoryModalOpen.value = true;
+};
+
+const submitNewCategory = async () => {
+  // Auto-select the newly created category
+  const list = txStore.categories[form.type] || [];
+  if (list.length > 0) {
+    form.category_id = list[list.length - 1].id;
+  }
+  isCategoryModalOpen.value = false;
+};
+
 const formatCurrency = (val) => {
   return new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' }).format(val);
 };
@@ -205,7 +225,7 @@ const formatCurrency = (val) => {
         v-model="form"
         :fopSettings="fopSettings"
         :isSubmitting="isSubmitting"
-        @add-category="isEditing = false; $emit('close')" 
+        @add-category="handleOpenCategory" 
       />
       
       <div class="mt-6">
@@ -219,6 +239,16 @@ const formatCurrency = (val) => {
       </div>
     </form>
   </BaseModal>
+
+  <!-- Reusable Category Creation Modal -->
+  <CategoryModal 
+    v-if="isCategoryModalOpen"
+    :isOpen="isCategoryModalOpen"
+    :userId="userId"
+    :type="form.type"
+    @close="isCategoryModalOpen = false"
+    @saved="submitNewCategory"
+  />
 </template>
 
 <style scoped>
