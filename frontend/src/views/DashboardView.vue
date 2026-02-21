@@ -6,6 +6,7 @@ import api from '@/services/api';
 import { supabase } from '@/services/supabase';
 import { APP_CONSTANTS } from '@/constants/appConstants';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
+import { formatMoney } from '@/utils/format';
 
 const taxRulesStore = useTaxRulesStore();
 
@@ -226,16 +227,9 @@ const realProfit = computed(() => {
   return txStore.summary.netProfit - taxCalculations.value.total;
 });
 
-// Форматування валюти
-const formatMoney = (val) => {
-  return (val || 0).toFixed(2) + ' ₴';
-};
-
 // Отримання назви категорії (допоміжна функція)
 const getCategoryName = (id) => {
-  if (!txStore.categories.all) return '...';
-  const cat = txStore.categories.all.find(c => c.id === id);
-  return cat ? cat.name : 'Без категорії';
+  return txStore.getCategoryName(id);
 };
 </script>
 

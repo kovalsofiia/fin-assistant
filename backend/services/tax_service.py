@@ -17,6 +17,8 @@ from core.constants import (
 ESV_MONTHLY_2025 = MIN_ESV # Alias for clarity
 
 class TaxService:
+    _rules_cache: Dict[str, Dict] = {}
+
     @staticmethod
     def verify_group_restrictions(settings: FopSettingsBase, annual_income: float) -> List[str]:
         errors = []
@@ -82,7 +84,12 @@ class TaxService:
         """
         Отримує всі правила оподаткування для конкретного періоду.
         Ці дані використовуються і для ESV, і для лімітів, і для ставок G1/G2.
+        Результати кешуються в пам'яті для прискорення масових розрахунків.
         """
+        cache_key = f"{year}-{month}"
+        if cache_key in TaxService._rules_cache:
+            return TaxService._rules_cache[cache_key]
+
         # Базові константи як фундамент
         fallback_rules = {
             "year": year,
@@ -109,11 +116,15 @@ class TaxService:
                 for key in fallback_rules:
                     if key in db_rule and db_rule[key] is not None:
                         fallback_rules[key] = float(db_rule[key])
+                
+                TaxService._rules_cache[cache_key] = fallback_rules
                 return fallback_rules
                 
         except Exception as e:
             print(f"DEBUG: Error fetching tax rules from DB for {year}-{month}: {e}")
         
+        # Ми також кешуємо дефолтні значення, щоб не смикати БД повторно при невдачі
+        TaxService._rules_cache[cache_key] = fallback_rules
         return fallback_rules
 
     @staticmethod
@@ -184,12 +195,10 @@ class TaxService:
             total_esv += TaxService.get_esv_rate(user_id, settings, curr_y, curr_m)
             
             # 2. Єдиний податок та Військовий збір
-            if settings.fop_group == FopGroup.GROUP_1:
-                total_single_tax += rules.get("single_tax_g1", SINGLE_TAX_G1)
-                total_military_tax += rules.get("fixed_military_tax", FIXED_MILITARY_TAX)
-                
-            elif settings.fop_group == FopGroup.GROUP_2:
-                total_single_tax += rules.get("single_tax_g2", SINGLE_TAX_G2)
+            if settings.fop_group in [FopGroup.GROUP_1, FopGroup.GROUP_2]:
+                tax_key = "single_tax_g1" if settings.fop_group == FopGroup.GROUP_1 else "single_tax_g2"
+                tax_default = SINGLE_TAX_G1 if settings.fop_group == FopGroup.GROUP_1 else SINGLE_TAX_G2
+                total_single_tax += rules.get(tax_key, tax_default)
                 total_military_tax += rules.get("fixed_military_tax", FIXED_MILITARY_TAX)
                 
             elif settings.fop_group == FopGroup.GROUP_3:

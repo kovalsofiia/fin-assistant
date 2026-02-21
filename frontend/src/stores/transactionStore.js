@@ -1,9 +1,12 @@
 import { defineStore } from 'pinia';
 import api from '@/services/api';
 import { supabase } from '@/services/supabase';
+import { getMonthRange } from '@/utils/dateUtils';
+import { getCategoryName } from '@/utils/format';
 
 export const useTransactionStore = defineStore('transactions', {
   state: () => {
+    // ... (rest of state remains the same)
     let savedFilters = {
       startDate: '',
       endDate: '',
@@ -39,27 +42,11 @@ export const useTransactionStore = defineStore('transactions', {
   },
 
   actions: {
-    // Допоміжна функція для отримання меж місяця
-    getMonthRange(year, month) {
-      const start = new Date(year, month, 1);
-      const end = new Date(year, month + 1, 0);
+    // Utilities are now imported
+    getMonthRange,
 
-      const formatDate = (date) => {
-        const d = new Date(date);
-        let month = '' + (d.getMonth() + 1);
-        let day = '' + d.getDate();
-        const year = d.getFullYear();
-
-        if (month.length < 2) month = '0' + month;
-        if (day.length < 2) day = '0' + day;
-
-        return [year, month, day].join('-');
-      };
-
-      return {
-        start: formatDate(start),
-        end: formatDate(end)
-      };
+    getCategoryName(id) {
+      return getCategoryName(id, this.categories.all);
     },
 
     // Отримання даних з урахуванням фільтрів

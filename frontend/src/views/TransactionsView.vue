@@ -207,9 +207,7 @@ const deleteCategory = async (catId) => {
 };
 
 const getCategoryName = (id) => {
-  if (!store.categories.all) return '...';
-  const found = store.categories.all.find(c => c.id === id);
-  return found ? found.name : '...';
+  return store.getCategoryName(id);
 };
 
 const handleUpdate = async () => {
