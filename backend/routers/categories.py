@@ -66,21 +66,60 @@ def create_category(cat: CategoryCreate):
 
 @router.delete("/{category_id}")
 def delete_category(category_id: str, user_id: str):
-    """Видалити власну категорію"""
+    """Видалити власну категорію та перенести транзакції в 'None'"""
     try:
-        # Спробуємо видалити. RLS (політики бази) не дадуть видалити системну категорію.
-        response = supabase.table("categories").delete()\
-            .eq("id", category_id)\
-            .eq("user_id", user_id)\
+        # 1. Отримуємо категорію, яку хочемо видалити
+        cat_res = supabase.table("categories").select("*") \
+            .eq("id", category_id) \
+            .eq("user_id", user_id) \
+            .execute()
+        
+        if not cat_res.data:
+            raise HTTPException(status_code=403, detail="Не можна видалити цю категорію (можливо, вона системна або не знайдена)")
+        
+        cat_to_delete = cat_res.data[0]
+        cat_type = cat_to_delete['type']
+        
+        # Забороняємо видаляти саму категорію 'None'
+        if cat_to_delete['name'] == 'None':
+            raise HTTPException(status_code=400, detail="Не можна видалити категорію 'None'")
+
+        # 2. Шукаємо або створюємо категорію 'None' для цього користувача та типу
+        none_res = supabase.table("categories").select("*") \
+            .eq("user_id", user_id) \
+            .eq("type", cat_type) \
+            .eq("name", "None") \
+            .execute()
+        
+        if none_res.data:
+            none_id = none_res.data[0]['id']
+        else:
+            # Створюємо 'None'
+            new_none = supabase.table("categories").insert({
+                "name": "None",
+                "type": cat_type,
+                "user_id": user_id
+            }).execute()
+            if not new_none.data:
+                raise HTTPException(status_code=500, detail="Не вдалося створити категорію 'None'")
+            none_id = new_none.data[0]['id']
+
+        # 3. Переприв'язуємо транзакції
+        supabase.table("transactions").update({"category_id": none_id}) \
+            .eq("category_id", category_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        # 4. Видаляємо стару категорію
+        response = supabase.table("categories").delete() \
+            .eq("id", category_id) \
+            .eq("user_id", user_id) \
             .execute()
             
-        # Якщо список data порожній, значить нічого не видалилось (бо не знайшли або немає прав)
-        if not response.data:
-            raise HTTPException(status_code=403, detail="Не можна видалити цю категорію (можливо, вона системна)")
-            
-        return {"message": "Категорію видалено"}
+        return {"message": "Категорію видалено, транзакції перенесено до 'None'"}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
+        print(f"Delete category error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{category_id}")
