@@ -7,7 +7,10 @@ import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import TransactionForm from '@/components/common/TransactionForm.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import { Check, Plus, Pencil, Trash2, RotateCcw, Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Info, X } from 'lucide-vue-next';
+import { useNotificationStore } from '@/stores/notificationStore';
 import api from '@/services/api';
+
+const notificationStore = useNotificationStore();
 
 const store = useTransactionStore();
 const userId = ref(null);
@@ -54,7 +57,7 @@ const deleteBatch = async () => {
       await store.deleteTransactionsBatch(userId.value, selectedTxIds.value);
       selectedTxIds.value = [];
     } catch (e) {
-      alert("Помилка при видаленні");
+      notificationStore.showError("Помилка при видаленні");
     }
   }
 };
@@ -181,7 +184,7 @@ const submitNewCategory = async () => {
     }
   } catch (e) {
     console.error(e);
-    alert(e.response?.data?.detail || "Помилка при збереженні категорії");
+    notificationStore.showError(e.response?.data?.detail || "Помилка при збереженні категорії");
   }
 };
 
@@ -198,7 +201,7 @@ const deleteCategory = async (catId) => {
         form.category_id = '';
       }
     } catch (e) {
-      alert(e.response?.data?.detail || "Помилка видалення");
+      notificationStore.showError(e.response?.data?.detail || "Помилка видалення");
     }
   }
 };

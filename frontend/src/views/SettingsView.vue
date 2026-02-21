@@ -21,14 +21,15 @@ import {
 } from 'lucide-vue-next';
 import { useTaxRulesStore } from '../stores/taxRulesStore';
 import { useTransactionStore } from '../stores/transactionStore';
-import { Tag, Trash2, Edit2 } from 'lucide-vue-next';
+import { useNotificationStore } from '../stores/notificationStore';
+import CategoryManager from '../components/settings/CategoryManager.vue';
 
 const txStore = useTransactionStore();
 const taxRulesStore = useTaxRulesStore();
 const router = useRouter();
 const isLoading = ref(false);
 const isSaving = ref(false);
-const message = ref({ text: '', type: '' }); // type: 'success' | 'error'
+const notificationStore = useNotificationStore();
 const userId = ref(null);
 
 // Стан модального вікна КВЕДів
@@ -135,74 +136,13 @@ const loadData = async () => {
 
   } catch (error) {
     console.error("Critical load error:", error);
-    showMessage("Не вдалося завантажити дані", 'error');
+    notificationStore.showError("Не вдалося завантажити дані");
   } finally {
     isLoading.value = false;
   }
 };
 
-// --- Category Management Logic ---
-const editingCatId = ref(null);
-const editingCatName = ref('');
 
-const startEditCategory = (cat) => {
-  editingCatId.value = cat.id;
-  editingCatName.value = cat.name;
-};
-
-const cancelEditCategory = () => {
-  editingCatId.value = null;
-  editingCatName.value = '';
-};
-
-const handleUpdateCategory = async (cat) => {
-  if (!editingCatName.value.trim() || editingCatName.value === cat.name) {
-    cancelEditCategory();
-    return;
-  }
-  try {
-    await txStore.modifyCategory(cat.id, userId.value, { name: editingCatName.value });
-    showMessage("Категорію оновлено", 'success');
-    cancelEditCategory();
-  } catch (e) {
-    showMessage("Помилка при оновленні", 'error');
-  }
-};
-
-const handleDeleteCategory = async (cat) => {
-  if (cat.name === 'None') {
-    showMessage("Категорію 'None' не можна видалити", 'error');
-    return;
-  }
-  if (confirm(`Видалити категорію "${cat.name}"? Усі транзакції цієї категорії будуть перенесені до "None".`)) {
-    try {
-      await txStore.removeCategory(cat.id, userId.value);
-      showMessage("Категорію видалено", 'success');
-    } catch (e) {
-      showMessage(e.response?.data?.detail || "Помилка при видаленні", 'error');
-    }
-  }
-};
-
-const newCatName = ref('');
-const newCatType = ref('expense');
-const isAddingCategory = ref(false);
-
-const handleAddCategory = async () => {
-  if (!newCatName.value.trim()) return;
-  try {
-    await txStore.createNewCategory({
-      name: newCatName.value,
-      type: newCatType.value,
-      user_id: userId.value
-    });
-    showMessage("Категорію створено", 'success');
-    newCatName.value = '';
-    isAddingCategory.value = false;
-  } catch (e) {
-    showMessage("Помилка при створенні", 'error');
-  }
-};
 
 const saveChanges = async () => {
   if (!userId.value) return;
@@ -210,20 +150,19 @@ const saveChanges = async () => {
   // Валідація найманих працівників
   const group = parseInt(fopSettings.value.fop_group);
   if ((group === 1 || group === 4) && fopSettings.value.has_employees) {
-    showMessage("Для 1-ї та 4-ї груп наймана праця заборонена", 'error');
+    notificationStore.showError("Для 1-ї та 4-ї груп наймана праця заборонена");
     return;
   }
   if (group === 2 && fopSettings.value.employees_count > 10) {
-    showMessage("Для 2-ї групи ліміт — 10 працівників", 'error');
+    notificationStore.showError("Для 2-ї групи ліміт — 10 працівників");
     return;
   }
   if (fopSettings.value.employees_count < 0) {
-    showMessage("Кількість працівників не може бути від'ємною", 'error');
+    notificationStore.showError("Кількість працівників не може бути від'ємною");
     return;
   }
 
   isSaving.value = true;
-  message.value.text = '';
 
   try {
     // 1. Оновлюємо профіль
@@ -253,11 +192,11 @@ const saveChanges = async () => {
     // 3. Зберігаємо КВЕДи локально
     localStorage.setItem(`kveds_${userId.value}`, JSON.stringify(userKveds.value));
 
-    showMessage("Налаштування успішно збережено", 'success');
+    notificationStore.showSuccess("Налаштування успішно збережено");
   } catch (error) {
     console.error(error);
     const errorMsg = error.response?.data?.detail || "Помилка при збереженні";
-    showMessage(errorMsg, 'error');
+    notificationStore.showError(errorMsg);
   } finally {
     isSaving.value = false;
   }
@@ -265,10 +204,7 @@ const saveChanges = async () => {
 
 // --- Helpers ---
 
-const showMessage = (text, type) => {
-  message.value = { text, type };
-  setTimeout(() => message.value.text = '', 3000);
-};
+
 
 watch(() => profile.value.is_fop, async (newVal) => {
   if (newVal && userId.value) {
@@ -388,9 +324,6 @@ onMounted(() => {
         <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
         <p class="text-gray-500 font-medium font-bold">Керування профілем та податковими параметрами</p>
       </div>
-      <div v-if="message.text" :class="message.type === 'success' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'" class="px-4 py-2 rounded-2xl border text-sm font-bold animate-slide-up shadow-sm">
-        {{ message.text }}
-      </div>
     </header>
 
     <div v-if="isLoading" class="py-24 text-center">
@@ -438,148 +371,10 @@ onMounted(() => {
       </section>
 
       <!-- Card: Category Management -->
-      <section class="bg-white rounded-[2rem] sm:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8">
-        <div class="flex items-center gap-4 mb-8">
-          <div class="bg-amber-500 p-3 rounded-2xl text-white shadow-lg shadow-amber-200">
-            <Tag :size="24" stroke-width="2.5" />
-          </div>
-          <h2 class="text-2xl font-black text-gray-900">Категорії</h2>
-          <button 
-            type="button" 
-            @click="isAddingCategory = !isAddingCategory" 
-            class="ml-auto text-xs font-black bg-gray-900 text-white px-4 py-2 rounded-xl hover:bg-black transition-all flex items-center gap-2"
-          >
-            <Plus :size="16" stroke-width="3" />
-            Додати
-          </button>
-        </div>
-
-        <div class="space-y-8">
-          <!-- Add New Category Form -->
-          <transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 -translate-y-4" enter-to-class="opacity-100 translate-y-0">
-            <div v-if="isAddingCategory" class="p-6 bg-amber-50 rounded-3xl border border-amber-100 shadow-inner space-y-4">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="space-y-2">
-                  <label class="text-[10px] font-black text-amber-700 uppercase tracking-widest px-2">Назва</label>
-                  <input type="text" v-model="newCatName" placeholder="Напр. Долари" class="w-full px-5 py-3 bg-white border-2 border-transparent focus:border-amber-500 rounded-2xl outline-none font-bold text-gray-800">
-                </div>
-                <div class="space-y-2">
-                  <label class="text-[10px] font-black text-amber-700 uppercase tracking-widest px-2">Тип</label>
-                  <select v-model="newCatType" class="w-full px-5 py-3 bg-white border-2 border-transparent focus:border-amber-500 rounded-2xl outline-none font-bold text-gray-800">
-                    <option value="income">Дохід</option>
-                    <option value="expense">Витрата</option>
-                  </select>
-                </div>
-              </div>
-              <div class="flex justify-end gap-3">
-                <button @click="isAddingCategory = false" type="button" class="px-6 py-3 font-bold text-amber-700 hover:bg-amber-100/50 rounded-xl transition-all">Скасувати</button>
-                <button @click="handleAddCategory" type="button" class="px-8 py-3 bg-amber-600 text-white font-black rounded-xl hover:bg-amber-700 transition-all shadow-lg shadow-amber-200">Створити</button>
-              </div>
-            </div>
-          </transition>
-          <!-- Income Categories -->
-          <div v-if="txStore.categories.income?.length > 0">
-            <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Категорії доходів</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div 
-                v-for="cat in txStore.categories.income.filter(c => c.user_id)" 
-                :key="cat.id"
-                class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
-              >
-                <div v-if="editingCatId === cat.id" class="flex-grow flex items-center gap-2">
-                  <input 
-                    type="text" 
-                    v-model="editingCatName" 
-                    class="flex-grow px-3 py-2 bg-white border-2 border-amber-500 rounded-xl outline-none font-bold text-sm"
-                    @keyup.enter="handleUpdateCategory(cat)"
-                    @keyup.esc="cancelEditCategory"
-                    autoFocus
-                  >
-                  <button @click="handleUpdateCategory(cat)" class="p-2 text-green-600 hover:bg-green-50 rounded-lg">
-                    <Check :size="18" stroke-width="3" />
-                  </button>
-                  <button @click="cancelEditCategory" class="p-2 text-gray-400 hover:bg-gray-100 rounded-lg">
-                    <X :size="18" />
-                  </button>
-                </div>
-                <template v-else>
-                  <span class="font-bold text-gray-700">{{ cat.name }}</span>
-                  <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      v-if="cat.name !== 'None'"
-                      @click="startEditCategory(cat)" 
-                      class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                    >
-                      <Edit2 :size="16" />
-                    </button>
-                    <button 
-                      v-if="cat.name !== 'None'"
-                      @click="handleDeleteCategory(cat)" 
-                      class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 :size="16" />
-                    </button>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </div>
-
-          <!-- Expense Categories -->
-          <div v-if="txStore.categories.expense?.length > 0">
-            <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Категорії витрат</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div 
-                v-for="cat in txStore.categories.expense.filter(c => c.user_id)" 
-                :key="cat.id"
-                class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
-              >
-                <div v-if="editingCatId === cat.id" class="flex-grow flex items-center gap-2">
-                  <input 
-                    type="text" 
-                    v-model="editingCatName" 
-                    class="flex-grow px-3 py-2 bg-white border-2 border-amber-500 rounded-xl outline-none font-bold text-sm"
-                    @keyup.enter="handleUpdateCategory(cat)"
-                    @keyup.esc="cancelEditCategory"
-                    autoFocus
-                  >
-                  <button @click="handleUpdateCategory(cat)" class="p-2 text-green-600 hover:bg-green-50 rounded-lg">
-                    <Check :size="18" stroke-width="3" />
-                  </button>
-                  <button @click="cancelEditCategory" class="p-2 text-gray-400 hover:bg-gray-100 rounded-lg">
-                    <X :size="18" />
-                  </button>
-                </div>
-                <template v-else>
-                  <span class="font-bold text-gray-700">{{ cat.name }}</span>
-                  <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
-                      v-if="cat.name !== 'None'"
-                      @click="startEditCategory(cat)" 
-                      class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                    >
-                      <Edit2 :size="16" />
-                    </button>
-                    <button 
-                      v-if="cat.name !== 'None'"
-                      @click="handleDeleteCategory(cat)" 
-                      class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 :size="16" />
-                    </button>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="!txStore.categories.all?.some(c => c.user_id)" class="py-12 text-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-100">
-            <Tag :size="32" class="mx-auto text-gray-300 mb-3" />
-            <p class="text-sm font-bold text-gray-400 uppercase tracking-widest">У вас ще немає власних категорій</p>
-            <p class="text-xs text-gray-400 mt-1">Ви можете створити їх при додаванні транзакції</p>
-          </div>
-        </div>
-      </section>
+      <CategoryManager 
+        v-if="userId" 
+        :userId="userId" 
+      />
       <!-- Card: Tax Settings (Only if FOP) -->
       <transition enter-active-class="transition duration-300 ease-out" enter-from-class="opacity-0 translate-y-4" enter-to-class="opacity-100 translate-y-0">
         <section v-if="profile.is_fop" class="bg-white rounded-[2rem] sm:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 transform">

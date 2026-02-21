@@ -1,7 +1,8 @@
 <script setup>
 import { ref } from 'vue';
-import { RouterView, useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { supabase } from '@/services/supabase';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { 
   Wallet, 
   LayoutDashboard, 
@@ -9,7 +10,11 @@ import {
   Settings, 
   Menu, 
   X, 
-  LogOut 
+  LogOut,
+  AlertCircle,
+  CheckCircle2,
+  Info as InfoIcon,
+  AlertTriangle 
 } from 'lucide-vue-next';
 import './assets/main.css'
 
@@ -27,6 +32,8 @@ const navigation = [
   { name: 'Транзакції', path: '/transactions', icon: Receipt },
   { name: 'Налаштування', path: '/settings', icon: Settings },
 ];
+
+const notificationStore = useNotificationStore();
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
@@ -132,10 +139,49 @@ const toggleMenu = () => {
         </div>
       </transition>
     </header>
-
     <main class="flex-grow">
       <RouterView />
     </main>
+
+    <!-- Global Notifications Stack -->
+    <div class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+      <transition-group 
+        enter-active-class="transition duration-300 ease-out"
+        enter-from-class="opacity-0 translate-y-4 scale-95"
+        enter-to-class="opacity-100 translate-y-0 scale-100"
+        leave-active-class="transition duration-200 ease-in"
+        leave-from-class="opacity-100 scale-100"
+        leave-to-class="opacity-0 scale-95"
+      >
+        <div 
+          v-for="n in notificationStore.notifications" 
+          :key="n.id"
+          class="pointer-events-auto p-4 rounded-2xl shadow-2xl border-2 flex items-start gap-4 backdrop-blur-md"
+          :class="{
+            'bg-green-50/90 border-green-100 text-green-800': n.type === 'success',
+            'bg-red-50/90 border-red-100 text-red-800': n.type === 'error',
+            'bg-blue-50/90 border-blue-100 text-blue-800': n.type === 'info',
+            'bg-amber-50/90 border-amber-100 text-amber-800': n.type === 'warning',
+          }"
+        >
+          <div class="mt-0.5">
+            <CheckCircle2 v-if="n.type === 'success'" :size="20" />
+            <AlertCircle v-else-if="n.type === 'error'" :size="20" />
+            <InfoIcon v-else-if="n.type === 'info'" :size="20" />
+            <AlertTriangle v-else-if="n.type === 'warning'" :size="20" />
+          </div>
+          <div class="flex-grow">
+            <p class="text-sm font-black leading-snug">{{ n.message }}</p>
+          </div>
+          <button 
+            @click="notificationStore.removeNotification(n.id)"
+            class="mt-0.5 opacity-50 hover:opacity-100 transition-opacity"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+      </transition-group>
+    </div>
   </div>
 </template>
 
