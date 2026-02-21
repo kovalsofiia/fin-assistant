@@ -38,7 +38,7 @@ def calculate_tax(
         
         # 4. Рахуємо податки
         # Для розрахунку використовуємо або місячний дохід, або річний розділений на місяці
-        income_for_calc = monthly_income if monthly_income > 0 else (annual_income / 12)
+        income_for_calc = monthly_income
         taxes = TaxService.calculate_taxes(user_id, settings, income_for_calc, period, calc_date)
         
         # 5. Календар

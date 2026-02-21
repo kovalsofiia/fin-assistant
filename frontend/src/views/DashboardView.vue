@@ -181,7 +181,7 @@ const taxCalculations = computed(() => {
     ep,
     vz,
     esv,
-    total: taxData.value.total_period_tax || (ep + vz + esv)
+    total: (ep + vz + esv)
   };
 });
 
