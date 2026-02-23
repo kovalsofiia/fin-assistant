@@ -6,6 +6,7 @@ import OnboardingView from '@/views/OnboardingView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import DashboardView from '@/views/DashboardView.vue';
 import TransactionsView from '@/views/TransactionsView.vue';
+import AnalyticsView from '@/views/AnalyticsView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -38,6 +39,12 @@ const router = createRouter({
       name: 'settings',
       component: SettingsView,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/analytics',
+      name: 'analytics',
+      component: AnalyticsView,
+      meta: { requiresAuth: true }
     }
   ]
 });
@@ -47,11 +54,11 @@ router.beforeEach(async (to, from, next) => {
 
   if (to.meta.requiresAuth && !session) {
     next('/');
-  } 
+  }
   else if (to.path === '/' && session) {
     // Якщо залогінений - ведемо на Дашборд
     next('/dashboard');
-  } 
+  }
   else {
     next();
   }

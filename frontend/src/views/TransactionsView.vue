@@ -69,7 +69,7 @@ const deleteBatch = async () => {
 
 // --- 1. Фільтри ---
 const resetFilters = () => {
-  store.filters = { startDate: '', endDate: '', type: '' };
+  store.filters = { startDate: '', endDate: '', type: '', categoryId: '' };
 };
 
 watch(() => store.filters, () => {

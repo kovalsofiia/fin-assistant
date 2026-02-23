@@ -61,7 +61,8 @@ def get_transactions(
     offset: int = 0,             # Для пагінації (гортати сторінки)
     start_date: Optional[date_type] = None, # Фільтр: З якої дати
     end_date: Optional[date_type] = None,   # Фільтр: По яку дату
-    type: Optional[str] = None         # Фільтр: 'income' або 'expense'
+    type: Optional[str] = None,        # Фільтр: 'income' або 'expense'
+    category_id: Optional[str] = None  # Фільтр: за категорією
 ):
     """
     Отримує список транзакцій з можливістю фільтрації.
@@ -86,6 +87,9 @@ def get_transactions(
             
         if type:
             query = query.eq("transaction_type", type)
+            
+        if category_id:
+            query = query.eq("category_id", category_id)
 
         # 3. Сортування та ліміти (завжди в кінці)
         response = query\

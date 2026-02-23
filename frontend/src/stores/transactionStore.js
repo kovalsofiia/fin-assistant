@@ -10,7 +10,8 @@ export const useTransactionStore = defineStore('transactions', {
     let savedFilters = {
       startDate: '',
       endDate: '',
-      type: ''
+      type: '',
+      categoryId: ''
     };
     try {
       const stored = localStorage.getItem('transaction_filters');
@@ -60,6 +61,7 @@ export const useTransactionStore = defineStore('transactions', {
         if (this.filters.startDate) params.start_date = this.filters.startDate;
         if (this.filters.endDate) params.end_date = this.filters.endDate;
         if (this.filters.type) params.type = this.filters.type;
+        if (this.filters.categoryId) params.category_id = this.filters.categoryId;
 
         // Save filters to localStorage
         localStorage.setItem('transaction_filters', JSON.stringify(this.filters));

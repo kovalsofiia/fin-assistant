@@ -14,7 +14,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Info as InfoIcon,
-  AlertTriangle 
+  AlertTriangle,
+  PieChart
 } from 'lucide-vue-next';
 import './assets/main.css'
 
@@ -30,6 +31,7 @@ const handleLogout = async () => {
 const navigation = [
   { name: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Транзакції', path: '/transactions', icon: Receipt },
+  { name: 'Аналітика', path: '/analytics', icon: PieChart },
   { name: 'Налаштування', path: '/settings', icon: Settings },
 ];
 
