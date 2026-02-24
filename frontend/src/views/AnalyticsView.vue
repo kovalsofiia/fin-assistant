@@ -13,7 +13,8 @@ import {
   LinearScale, 
   PointElement, 
   LineElement, 
-  BarElement 
+  BarElement,
+  Filler
 } from 'chart.js';
 import { PieChart, ArrowUpRight, ArrowDownLeft, TrendingUp, BarChart3, CalendarDays } from 'lucide-vue-next';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
@@ -21,7 +22,7 @@ import TransactionFilters from '@/components/transactions/TransactionFilters.vue
 
 ChartJS.register(
   Title, Tooltip, Legend, ArcElement, CategoryScale, 
-  LinearScale, PointElement, LineElement, BarElement
+  LinearScale, PointElement, LineElement, BarElement, Filler
 );
 
 const store = useTransactionStore();

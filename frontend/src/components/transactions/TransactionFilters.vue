@@ -106,21 +106,21 @@ onMounted(() => {
           <option value="custom">Інший період...</option>
         </select>
         
-        <div class="flex items-center gap-2 animate-fade-in flex-grow max-w-xs sm:max-w-sm">
+        <div class="flex flex-col sm:flex-row items-center gap-2 animate-fade-in flex-grow max-w-none sm:max-w-sm">
           <input 
             type="date" 
             v-model="localFilters.startDate" 
             @change="quickDateFilter = 'custom'"
             class="w-full px-3 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 text-sm"
           >
-          <span class="text-gray-300 font-bold px-1">—</span>
+          <span class="text-gray-300 font-bold px-1 hidden sm:block">—</span>
           <input 
             type="date" 
             v-model="localFilters.endDate" 
             @change="quickDateFilter = 'custom'"
             class="w-full px-3 py-3 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-none transition-all font-bold text-gray-700 text-sm"
           >
-      </div>
+        </div>
     </div>
   </div>
     
