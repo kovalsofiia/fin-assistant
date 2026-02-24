@@ -24,7 +24,7 @@ export const useTransactionStore = defineStore('transactions', {
 
     return {
       transactions: [],
-      categories: [], // { income: [], expense: [], all: [] }
+      categories: { income: [], expense: [], all: [] },
       filters: savedFilters,
       summary: {
         totalIncome: 0,
