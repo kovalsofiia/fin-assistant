@@ -39,15 +39,15 @@ const openTransactionDetails = (tx) => {
 };
 
 const handleTransactionUpdate = async () => {
+  const filters = getPeriodFilters();
   await Promise.all([
-    txStore.fetchTransactions(),
-    txStore.fetchLifetimeSummary()
+    txStore.fetchTransactions(filters),
+    txStore.fetchLifetimeSummary(filters.endDate)
   ]);
   if (profile.value?.is_fop) {
     await fetchTaxAnalysis();
   }
   isDetailModalOpen.value = false;
-  router.push('/transactions');
 };
 
 // Фільтрація періоду
@@ -57,10 +57,9 @@ const currentYear = ref(currentDate.getFullYear());
 const selectedPeriodType = ref('month'); // 'month' або 'custom'
 
 // Ініціалізація періоду (поточний місяць)
-const setInitialPeriod = () => {
+const getPeriodFilters = () => {
   const { start, end } = txStore.getMonthRange(currentYear.value, currentMonth.value);
-  txStore.filters.startDate = start;
-  txStore.filters.endDate = end;
+  return { startDate: start, endDate: end, type: '', categoryId: '' };
 };
 
 onMounted(async () => {
@@ -70,12 +69,12 @@ onMounted(async () => {
     userId.value = user.id;
     
     try {
-      setInitialPeriod();
+      const filters = getPeriodFilters();
 
       // Завантажуємо все паралельно для швидкості
       const [profileRes] = await Promise.all([
         api.getProfile(user.id),
-        txStore.fetchInitialData()
+        txStore.fetchInitialData(filters)
       ]);
       
       profile.value = profileRes.data;
@@ -130,14 +129,12 @@ const changeMonth = async (delta) => {
     currentYear.value--;
   }
   
-  const { start, end } = txStore.getMonthRange(currentYear.value, currentMonth.value);
-  txStore.filters.startDate = start;
-  txStore.filters.endDate = end;
+  const filters = getPeriodFilters();
   
   // Спочатку чекаємо на оновлення транзакцій, щоб мати актуальний дохід для податків
   await Promise.all([
-    txStore.fetchTransactions(),
-    txStore.fetchLifetimeSummary()
+    txStore.fetchTransactions(filters),
+    txStore.fetchLifetimeSummary(filters.endDate)
   ]);
   
   if (profile.value?.is_fop) {

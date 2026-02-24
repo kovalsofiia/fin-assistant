@@ -51,20 +51,24 @@ export const useTransactionStore = defineStore('transactions', {
     },
 
     // Отримання даних з урахуванням фільтрів
-    async fetchTransactions() {
+    async fetchTransactions(filterOverride = null) {
       this.isLoading = true;
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
+        const effectiveFilters = filterOverride || this.filters;
         const params = { limit: 100 }; // Базовий ліміт
-        if (this.filters.startDate) params.start_date = this.filters.startDate;
-        if (this.filters.endDate) params.end_date = this.filters.endDate;
-        if (this.filters.type) params.type = this.filters.type;
-        if (this.filters.categoryId) params.category_id = this.filters.categoryId;
 
-        // Save filters to localStorage
-        localStorage.setItem('transaction_filters', JSON.stringify(this.filters));
+        if (effectiveFilters.startDate) params.start_date = effectiveFilters.startDate;
+        if (effectiveFilters.endDate) params.end_date = effectiveFilters.endDate;
+        if (effectiveFilters.type) params.type = effectiveFilters.type;
+        if (effectiveFilters.categoryId) params.category_id = effectiveFilters.categoryId;
+
+        // Save filters to localStorage only if they are the main filters
+        if (!filterOverride) {
+          localStorage.setItem('transaction_filters', JSON.stringify(this.filters));
+        }
 
         const txRes = await api.getTransactions(user.id, params);
         this.transactions = txRes.data;
@@ -79,13 +83,14 @@ export const useTransactionStore = defineStore('transactions', {
       }
     },
 
-    async fetchLifetimeSummary() {
+    async fetchLifetimeSummary(endDateOverride = null) {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         const params = {};
-        if (this.filters.endDate) params.end_date = this.filters.endDate;
+        const effectiveEndDate = endDateOverride || this.filters.endDate;
+        if (effectiveEndDate) params.end_date = effectiveEndDate;
 
         const summaryRes = await api.getTransactionSummary(user.id, params);
         this.lifetimeSummary = summaryRes.data;
@@ -101,11 +106,11 @@ export const useTransactionStore = defineStore('transactions', {
       this.categories = catRes.data;
     },
 
-    async fetchInitialData() {
+    async fetchInitialData(filterOverride = null) {
       await Promise.all([
-        this.fetchTransactions(),
+        this.fetchTransactions(filterOverride),
         this.fetchCategories(),
-        this.fetchLifetimeSummary()
+        this.fetchLifetimeSummary(filterOverride?.endDate)
       ]);
     },
 
