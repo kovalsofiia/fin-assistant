@@ -138,19 +138,6 @@ export const useTransactionStore = defineStore('transactions', {
       this.transactions = this.transactions.filter(t => t.transaction_id !== txId);
       this.calculateSummary();
     },
-    async deleteTransactionsBatch(userId, transactionIds) {
-      this.isLoading = true;
-      try {
-        await api.deleteTransactionsBatch(userId, transactionIds);
-        this.transactions = this.transactions.filter(t => !transactionIds.includes(t.transaction_id));
-        this.calculateSummary();
-      } catch (e) {
-        console.error("Batch delete error:", e);
-        throw e;
-      } finally {
-        this.isLoading = false;
-      }
-    },
 
     async createNewCategory(categoryData) {
       // categoryData: { name, type, user_id }

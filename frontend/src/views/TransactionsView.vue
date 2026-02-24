@@ -32,43 +32,12 @@ const editingTxId = ref(null);
 const fopSettings = ref(null);
 const userProfile = ref(null);
 
-// --- New Detail Modal & Selection ---
 const isDetailModalOpen = ref(false);
 const selectedTransaction = ref(null);
-const selectedTxIds = ref([]);
 
 const openTransactionDetails = (tx) => {
   selectedTransaction.value = tx;
   isDetailModalOpen.value = true;
-};
-
-const toggleSelection = (txId) => {
-  const index = selectedTxIds.value.indexOf(txId);
-  if (index > -1) {
-    selectedTxIds.value.splice(index, 1);
-  } else {
-    selectedTxIds.value.push(txId);
-  }
-};
-
-const toggleSelectAll = () => {
-  if (selectedTxIds.value.length === store.transactions.length) {
-    selectedTxIds.value = [];
-  } else {
-    selectedTxIds.value = store.transactions.map(t => t.transaction_id);
-  }
-};
-
-const deleteBatch = async () => {
-  if (selectedTxIds.value.length === 0) return;
-  if (confirm(`Видалити вибрані транзакції (${selectedTxIds.value.length})?`)) {
-    try {
-      await store.deleteTransactionsBatch(userId.value, selectedTxIds.value);
-      selectedTxIds.value = [];
-    } catch (e) {
-      notificationStore.showError("Помилка при видаленні");
-    }
-  }
 };
 
 
@@ -224,21 +193,6 @@ const handleUpdate = async () => {
           {{ showCharts ? 'Приховати графіки' : 'Показати графіки' }}
         </button>
         <button 
-          @click="deleteBatch"
-          class="w-full md:w-auto bg-red-50 text-red-600 px-4 py-3 sm:px-6 sm:py-4 rounded-2xl font-black border-2 border-red-100 hover:bg-red-100 transition-all flex items-center justify-center gap-2"
-          v-if="selectedTxIds.length > 0"
-        >
-          <Trash2 :size="18" />
-          Видалити ({{ selectedTxIds.length }})
-        </button>
-        <button 
-          v-if="selectedTxIds.length > 0"
-          @click="selectedTxIds = []"
-          class="w-full md:w-auto bg-gray-50 text-gray-500 px-4 py-3 sm:px-6 sm:py-4 rounded-2xl font-black hover:bg-gray-100 transition-all"
-        >
-          Скасувати
-        </button>
-        <button 
           @click="openCreateModal"
           class="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 sm:px-8 sm:py-4 rounded-2xl font-black shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
         >
@@ -282,59 +236,41 @@ const handleUpdate = async () => {
         <div 
           v-for="tx in store.transactions" 
           :key="tx.transaction_id" 
-          class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all space-y-4 relative"
-          :class="{ 'border-blue-500 bg-blue-50/30': selectedTxIds.includes(tx.transaction_id) }"
+          class="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-all"
         >
-          <!-- Selection Checkbox (Mobile) -->
-          <div class="absolute top-4 right-4 z-10">
-            <input 
-              type="checkbox" 
-              :checked="selectedTxIds.includes(tx.transaction_id)" 
-              @click.stop="toggleSelection(tx.transaction_id)"
-              class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all"
-            >
-          </div>
-
-          <div class="flex justify-between items-start" @click="openTransactionDetails(tx)">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
-                <Calendar :size="18" />
+          <div class="flex-grow space-y-4" @click="openTransactionDetails(tx)">
+            <div class="flex justify-between items-start">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                  <Calendar :size="18" />
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ new Date(tx.transaction_date).toLocaleDateString('uk-UA') }}</span>
+                  <span class="font-bold text-gray-800">{{ getCategoryName(tx.category_id) }}</span>
+                </div>
               </div>
+              <div 
+                class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
+                :class="tx.transaction_type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+              >
+                {{ tx.transaction_type === 'income' ? 'Дохід' : 'Витрата' }}
+              </div>
+            </div>
+
+            <div v-if="tx.notes" class="text-sm text-gray-500 font-medium italic bg-gray-50 p-3 rounded-xl">
+              "{{ tx.notes }}"
+            </div>
+
+            <div class="flex justify-between items-end pt-2 border-t border-gray-50">
               <div class="flex flex-col">
-                <span class="text-xs font-black text-gray-400 uppercase tracking-widest">{{ new Date(tx.transaction_date).toLocaleDateString('uk-UA') }}</span>
-                <span class="font-bold text-gray-800">{{ getCategoryName(tx.category_id) }}</span>
+                <div class="text-xl font-black tracking-tight" :class="tx.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'">
+                  {{ tx.transaction_type === 'income' ? '+' : '-' }}
+                  {{ tx.transaction_amount.toLocaleString() }} ₴
+                </div>
+                <div v-if="tx.is_foreign_currency" class="text-[10px] font-black uppercase text-gray-400 mt-1 flex items-center gap-1">
+                  {{ tx.amount_original }} {{ tx.currency_code }} <span class="text-gray-200">•</span> {{ tx.exchange_rate }}
+                </div>
               </div>
-            </div>
-            <div 
-              class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
-              :class="tx.transaction_type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-            >
-              {{ tx.transaction_type === 'income' ? 'Дохід' : 'Витрата' }}
-            </div>
-          </div>
-
-          <div v-if="tx.notes" class="text-sm text-gray-500 font-medium italic bg-gray-50 p-3 rounded-xl">
-            "{{ tx.notes }}"
-          </div>
-
-          <div class="flex justify-between items-end pt-2 border-t border-gray-50">
-            <div class="flex flex-col">
-              <div class="text-xl font-black tracking-tight" :class="tx.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'">
-                {{ tx.transaction_type === 'income' ? '+' : '-' }}
-                {{ tx.transaction_amount.toLocaleString() }} ₴
-              </div>
-              <div v-if="tx.is_foreign_currency" class="text-[10px] font-black uppercase text-gray-400 mt-1 flex items-center gap-1">
-                {{ tx.amount_original }} {{ tx.currency_code }} <span class="text-gray-200">•</span> {{ tx.exchange_rate }}
-              </div>
-            </div>
-            
-            <div class="flex gap-2">
-              <button @click.stop="openTransactionDetails(tx)" class="p-2.5 bg-gray-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
-                <Info :size="18" />
-              </button>
-              <button @click.stop="deleteTx(tx.transaction_id)" class="p-2.5 bg-gray-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                <Trash2 :size="18" />
-              </button>
             </div>
           </div>
         </div>
@@ -352,14 +288,6 @@ const handleUpdate = async () => {
         <table class="w-full text-left">
           <thead>
             <tr class="bg-gray-50/50 border-b border-gray-50">
-              <th class="px-8 py-6 w-10">
-                <input 
-                  type="checkbox" 
-                  :checked="selectedTxIds.length === store.transactions.length && store.transactions.length > 0" 
-                  @change="toggleSelectAll"
-                  class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all cursor-pointer"
-                >
-              </th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Дата</th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Категорія</th>
               <th class="px-8 py-6 text-xs font-black text-gray-400 uppercase tracking-widest">Коментар</th>
@@ -384,10 +312,6 @@ const handleUpdate = async () => {
                     <SkeletonLoader width="60px" height="12px" />
                   </div>
                 </td>
-                <td class="px-8 py-6 flex justify-end gap-2">
-                  <SkeletonLoader width="44px" height="44px" borderRadius="12px" />
-                  <SkeletonLoader width="44px" height="44px" borderRadius="12px" />
-                </td>
               </tr>
             </template>
 
@@ -397,17 +321,8 @@ const handleUpdate = async () => {
                 v-for="tx in store.transactions" 
                 :key="tx.transaction_id" 
                 class="group hover:bg-gray-50/50 transition-all cursor-pointer"
-                :class="{ 'bg-blue-50/30': selectedTxIds.includes(tx.transaction_id) }"
                 @click="openTransactionDetails(tx)"
               >
-                <td class="px-8 py-6" @click.stop>
-                  <input 
-                    type="checkbox" 
-                    :checked="selectedTxIds.includes(tx.transaction_id)" 
-                    @change="toggleSelection(tx.transaction_id)"
-                    class="w-5 h-5 rounded-lg border-2 border-gray-200 checked:bg-blue-600 checked:border-blue-600 transition-all cursor-pointer"
-                  >
-                </td>
                 <td class="px-8 py-6">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-white group-hover:shadow-sm transition-all">

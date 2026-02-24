@@ -19,10 +19,5 @@ export default {
         return api.patch(`/transactions/${transactionId}`, data, {
             params: { user_id: userId }
         });
-    },
-    deleteTransactionsBatch(userId, transactionIds) {
-        return api.delete('/transactions/batch/delete', {
-            data: { user_id: userId, transaction_ids: transactionIds }
-        });
     }
 };
