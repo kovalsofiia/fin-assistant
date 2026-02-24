@@ -6,7 +6,7 @@ import CategoryModal from '@/components/common/CategoryModal.vue';
 import TransactionForm from '@/components/common/TransactionForm.vue';
 import { 
   Pencil, Trash2, Calendar, Tag, FileText, 
-  ArrowUpRight, ArrowDownLeft
+  ArrowUpRight, ArrowDownLeft, CreditCard, User
 } from 'lucide-vue-next';
 import api from '@/services/api';
 import { useNotificationStore } from '@/stores/notificationStore';
@@ -37,7 +37,8 @@ const initialFormState = {
   description: '',
   currency: 'UAH',
   manual_rate: '',
-  isZed: false
+  isZed: false,
+  is_fop: true
 };
 
 const form = reactive({ ...initialFormState });
@@ -57,7 +58,8 @@ watch(() => props.transaction, (newTx) => {
       description: newTx.notes || '',
       currency: newTx.currency_code || 'UAH',
       manual_rate: newTx.exchange_rate === 1.0 ? '' : newTx.exchange_rate,
-      isZed: newTx.is_foreign_currency
+      isZed: newTx.is_foreign_currency,
+      is_fop: newTx.is_fop !== false
     });
   } else {
     resetForm();
@@ -105,7 +107,8 @@ const submitUpdate = async () => {
       date: form.date,
       description: form.description,
       currency: form.isZed ? form.currency : 'UAH',
-      manual_rate: (form.isZed && form.manual_rate) ? parseFloat(form.manual_rate) : null
+      manual_rate: (form.isZed && form.manual_rate) ? parseFloat(form.manual_rate) : null,
+      is_fop: form.type === 'income' ? form.is_fop : true
     };
 
     await txStore.editTransaction(props.transaction.transaction_id, props.userId, payload);
@@ -182,6 +185,17 @@ const formatCurrency = (val) => {
             <span class="text-xs font-black uppercase tracking-widest">Дата</span>
           </div>
           <span class="font-bold text-gray-800">{{ new Date(transaction.transaction_date).toLocaleDateString('uk-UA') }}</span>
+        </div>
+
+        <!-- Account Type for Income -->
+        <div v-if="transaction.transaction_type === 'income'" class="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl">
+          <div class="flex items-center gap-3 text-gray-500">
+            <component :is="transaction.is_fop !== false ? CreditCard : User" :size="18" />
+            <span class="text-xs font-black uppercase tracking-widest">Тип рахунку</span>
+          </div>
+          <span class="font-bold" :class="transaction.is_fop !== false ? 'text-blue-600' : 'text-amber-600'">
+            {{ transaction.is_fop !== false ? 'ФОП Карта' : 'Особистий' }}
+          </span>
         </div>
 
         <div v-if="transaction.notes" class="p-4 bg-white border border-gray-100 rounded-2xl space-y-2">

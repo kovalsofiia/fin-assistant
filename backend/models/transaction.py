@@ -22,6 +22,8 @@ class TransactionCreate(BaseModel):
     date: date_type
     # 4. Курс теж має бути більше 0, якщо він заданий
     manual_rate: Optional[float] = Field(None, gt=MIN_MANUAL_RATE) 
+    # 5. Чи є це доходом ФОП (для оподаткування)
+    is_fop: bool = True
 
 class TransactionPatch(BaseModel):
     category_id: Optional[str] = None
@@ -31,3 +33,4 @@ class TransactionPatch(BaseModel):
     date: Optional[date_type] = None
     currency: Optional[str] = Field(None, pattern=CURRENCY_REGEX)
     manual_rate: Optional[float] = Field(None, gt=MIN_MANUAL_RATE)
+    is_fop: Optional[bool] = None

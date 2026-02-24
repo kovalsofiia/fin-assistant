@@ -39,7 +39,8 @@ def create_transaction(tx: TransactionCreate):
         "is_foreign_currency": tx.currency != "UAH",
         "currency_code": tx.currency,
         "amount_original": tx.amount if tx.currency != "UAH" else None,
-        "exchange_rate": final_rate
+        "exchange_rate": final_rate,
+        "is_fop": tx.is_fop
     }
 
     try:
@@ -114,14 +115,8 @@ def get_transaction_summary(
     Якщо передати end_date, рахує все від початку часів до цієї дати.
     """
     try:
-        # Використовуємо rpc або просто витягуємо суми через select
-        # Для простоти на Supabase Python SDK ми можемо додати .sum() 
-        # але нативне SDK не завжди це підтримує зручно без RPC.
-        # Тому просто витягнемо необхідні поля і просумуємо.
-        # (У реальному проекті краще мати RPC функцію в Postgres).
-        
         query = supabase.table("transactions")\
-            .select("transaction_amount, transaction_type, transaction_date")\
+            .select("transaction_amount, transaction_type, transaction_date, is_fop")\
             .eq("user_id", user_id)
         
         if end_date:
@@ -130,24 +125,31 @@ def get_transaction_summary(
         response = query.execute()
         
         income = 0.0
+        fop_income = 0.0
         expense = 0.0
         months = set()
         
         for tx in response.data:
             amount = float(tx["transaction_amount"])
             date_str = tx.get("transaction_date", "")
+            is_fop = tx.get("is_fop", True) if tx.get("is_fop") is not None else True
+            
             if date_str:
                 months.add(date_str[:7])
 
             if tx["transaction_type"] == "income":
                 income += amount
+                if is_fop:
+                    fop_income += amount
             else:
                 expense += amount
         
         return {
             "totalIncome": round(income, 2),
+            "totalFopIncome": round(fop_income, 2),
             "totalExpense": round(expense, 2),
             "balance": round(income - expense, 2),
+            "balanceFop": round(fop_income - expense, 2),
             "monthsCount": len(months)
         }
     except Exception as e:
@@ -273,6 +275,9 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
             data_to_update["currency_code"] = new_currency
             data_to_update["amount_original"] = final_amount_original
             data_to_update["exchange_rate"] = final_rate
+
+        if patch.is_fop is not None:
+            data_to_update["is_fop"] = patch.is_fop
 
         # 5. Зберігаємо в базу
         response = supabase.table("transactions")\

@@ -17,7 +17,7 @@ import StatCard from '@/components/dashboard/StatCard.vue';
 import TaxWidget from '@/components/dashboard/TaxWidget.vue';
 import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
-import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock } from 'lucide-vue-next';
+import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock, CreditCard, User } from 'lucide-vue-next';
 
 const txStore = useTransactionStore();
 const router = useRouter();
@@ -104,7 +104,7 @@ const fetchTaxAnalysis = async () => {
       params: {
         user_id: userId.value,
         annual_income: txStore.lifetimeSummary.totalIncome || 0,
-        monthly_income: txStore.summary.totalIncome || 0,
+        monthly_income: txStore.summary.totalFopIncome || 0,
         period: selectedPeriodType.value === 'month' ? 'month' : 'quarter',
         calc_date: `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-01`
       }
@@ -148,7 +148,7 @@ const changeMonth = async (delta) => {
 };
 
 // Реактивність: перераховуємо податки при зміні доходу
-watch(() => txStore.summary.totalIncome, () => {
+watch(() => txStore.summary.totalFopIncome, () => {
   if (profile.value?.is_fop) fetchTaxAnalysis();
 });
 
@@ -161,7 +161,7 @@ const taxCalculations = computed(() => {
   if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
   
   const isGroup3 = settings.value?.fop_group === 3;
-  const incomeIsZero = (txStore.summary.totalIncome || 0) === 0;
+  const incomeIsZero = (txStore.summary.totalFopIncome || 0) === 0;
 
   let ep = taxData.value.single_tax;
   let vz = taxData.value.military_tax;

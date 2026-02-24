@@ -28,6 +28,7 @@ export const useTransactionStore = defineStore('transactions', {
       filters: savedFilters,
       summary: {
         totalIncome: 0,
+        totalFopIncome: 0,
         totalExpense: 0,
         netProfit: 0
       },
@@ -116,13 +117,21 @@ export const useTransactionStore = defineStore('transactions', {
 
     calculateSummary() {
       let inc = 0;
+      let fopInc = 0;
       let exp = 0;
       this.transactions.forEach(t => {
         const amount = parseFloat(t.transaction_amount);
-        if (t.transaction_type === 'income') inc += amount;
-        else exp += amount;
+        const isFop = t.is_fop !== false; // Default to true if missing
+
+        if (t.transaction_type === 'income') {
+          inc += amount;
+          if (isFop) fopInc += amount;
+        } else {
+          exp += amount;
+        }
       });
       this.summary.totalIncome = inc;
+      this.summary.totalFopIncome = fopInc;
       this.summary.totalExpense = exp;
       this.summary.netProfit = inc - exp;
     },

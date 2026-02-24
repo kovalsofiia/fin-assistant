@@ -2,7 +2,8 @@
 import { computed, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { 
-  Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Check, Info 
+  Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Check, Info, 
+  CreditCard, User
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -119,6 +120,36 @@ const isZedRestricted = computed(() => {
           class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800"
         >
       </div>
+    </div>
+
+    <!-- FOP vs Personal (Only for Income) -->
+    <div v-if="form.type === 'income'" class="space-y-3 animate-fade-in">
+      <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
+        <CreditCard :size="14" /> Куди надійшли кошти?
+      </label>
+      <div class="flex p-1.5 bg-gray-100 rounded-2xl gap-2">
+        <button 
+          type="button"
+          class="flex-1 py-3 px-4 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+          :class="form.is_fop ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'"
+          @click.prevent="form.is_fop = true"
+        >
+          <CreditCard :size="14" />
+          Карта ФОП
+        </button>
+        <button 
+          type="button"
+          class="flex-1 py-3 px-4 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+          :class="!form.is_fop ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'"
+          @click.prevent="form.is_fop = false"
+        >
+          <User :size="14" />
+          Особиста
+        </button>
+      </div>
+      <p class="text-[10px] font-medium px-2" :class="form.is_fop ? 'text-blue-500' : 'text-amber-500'">
+        {{ form.is_fop ? 'Цей дохід буде враховано при розрахунку податків.' : 'Особисті кошти не підлягають оподаткуванню ФОП.' }}
+      </p>
     </div>
 
     <!-- ZED/FX Row -->
