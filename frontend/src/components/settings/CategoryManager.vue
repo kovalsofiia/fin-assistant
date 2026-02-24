@@ -46,6 +46,12 @@ const handleDeleteCategory = async (cat) => {
     }
   }
 };
+
+const TAX_CATEGORIES = ['Єдиний податок', 'ЄСВ', 'Військовий збір'];
+
+const isTaxCategory = (cat) => {
+  return TAX_CATEGORIES.some(tc => cat.name.toLowerCase().includes(tc.toLowerCase()));
+};
 </script>
 
 <template>
@@ -66,7 +72,7 @@ const handleDeleteCategory = async (cat) => {
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div 
-            v-for="cat in txStore.categories.income" 
+            v-for="cat in txStore.categories.income.filter(c => !isTaxCategory(c))" 
             :key="cat.id"
             class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
           >
@@ -110,7 +116,7 @@ const handleDeleteCategory = async (cat) => {
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div 
-            v-for="cat in txStore.categories.expense" 
+            v-for="cat in txStore.categories.expense.filter(c => !isTaxCategory(c))" 
             :key="cat.id"
             class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
           >
