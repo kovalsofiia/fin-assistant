@@ -100,7 +100,9 @@ class TaxService:
             "fixed_military_tax": FIXED_MILITARY_TAX,
             "limit_g1": LIMIT_G1,
             "limit_g2": LIMIT_G2,
-            "limit_g3": LIMIT_G3
+            "limit_g3": LIMIT_G3,
+            "income_tax_percent": None, # Will be determined by system defaults (3/5%)
+            "military_tax_percent": 1.0 if year >= 2025 else 1.5 # Example transition logic
         }
         
         try:
@@ -126,6 +128,67 @@ class TaxService:
         # Ми також кешуємо дефолтні значення, щоб не смикати БД повторно при невдачі
         TaxService._rules_cache[cache_key] = fallback_rules
         return fallback_rules
+
+    @staticmethod
+    def get_tax_rates(user_id: str, settings: FopSettingsBase, year: int, month: int) -> Dict[str, float]:
+        """
+        Отримує відсоткові ставки податків (Єдиний та Військовий) з урахуванням оверрайдів.
+        """
+        # Дефолтні значення на основі групи та ПДВ
+        default_income_rate = 5.0
+        if settings.fop_group == FopGroup.GROUP_3:
+            default_income_rate = 3.0 if settings.is_vat_payer else 5.0
+        elif settings.fop_group == FopGroup.GROUP_4:
+            default_income_rate = 0.95
+            
+        default_military_rate = 1.0 # За замовчуванням 1% для 3-ї групи у 2025
+
+        rates = {
+            "income_tax_percent": default_income_rate,
+            "military_tax_percent": default_military_rate,
+            "fixed_military_tax": FIXED_MILITARY_TAX
+        }
+
+        try:
+            # 1. Глобальні правила (Пріорітет №2 - якщо система змінить дефолти для всіх)
+            rules = TaxService.get_tax_rules(year, month)
+            if rules.get("income_tax_percent") is not None:
+                rates["income_tax_percent"] = rules["income_tax_percent"]
+            if rules.get("military_tax_percent") is not None:
+                rates["military_tax_percent"] = rules["military_tax_percent"]
+            if rules.get("fixed_military_tax") is not None:
+                rates["fixed_military_tax"] = rules["fixed_military_tax"]
+
+            # 2. User Overrides (Пріорітет №1)
+            user_override = supabase.table("user_tax_overrides")\
+                .select("*")\
+                .eq("user_id", user_id)\
+                .eq("year", int(year))\
+                .eq("month", int(month))\
+                .execute()
+            
+            if user_override.data:
+                ov = user_override.data[0]
+                if ov.get("income_tax_percent") is not None:
+                    rates["income_tax_percent"] = float(ov["income_tax_percent"])
+                if ov.get("military_tax_percent") is not None:
+                    rates["military_tax_percent"] = float(ov["military_tax_percent"])
+                if ov.get("fixed_military_tax") is not None:
+                    rates["fixed_military_tax"] = float(ov["fixed_military_tax"])
+                return rates
+
+        except Exception as e:
+            print(f"DEBUG: Error in get_tax_rates: {e}")
+
+        # 3. Поточні налаштування (для майбутніх періодів або якщо немає оверрайдів)
+        today = date.today()
+        if (year > today.year) or (year == today.year and month >= today.month):
+            if settings.income_tax_percent is not None:
+                rates["income_tax_percent"] = float(settings.income_tax_percent)
+            if settings.military_tax_percent is not None:
+                rates["military_tax_percent"] = float(settings.military_tax_percent)
+
+        return rates
 
     @staticmethod
     def get_esv_rate(user_id: str, settings: FopSettingsBase, year: int, month: int) -> float:
@@ -195,33 +258,29 @@ class TaxService:
             total_esv += TaxService.get_esv_rate(user_id, settings, curr_y, curr_m)
             
             # 2. Єдиний податок та Військовий збір
+            rates = TaxService.get_tax_rates(user_id, settings, curr_y, curr_m)
+            
             if settings.fop_group in [FopGroup.GROUP_1, FopGroup.GROUP_2]:
                 tax_key = "single_tax_g1" if settings.fop_group == FopGroup.GROUP_1 else "single_tax_g2"
                 tax_default = SINGLE_TAX_G1 if settings.fop_group == FopGroup.GROUP_1 else SINGLE_TAX_G2
                 total_single_tax += rules.get(tax_key, tax_default)
-                total_military_tax += rules.get("fixed_military_tax", FIXED_MILITARY_TAX)
+                total_military_tax += rates["fixed_military_tax"]
                 
             elif settings.fop_group == FopGroup.GROUP_3:
                 # Для 3-ї групи податки залежать від доходу за весь період
-                # Ми ділимо дохід порівну між місяцями для спрощення розрахунку за місяць
                 monthly_income = income / months_to_calc
                 
-                # Single Tax: use percent from settings or fallback to 3%/5%
-                rate = (settings.income_tax_percent / 100.0) if settings.income_tax_percent is not None else (0.03 if settings.is_vat_payer else 0.05)
-                total_single_tax += monthly_income * rate
+                # Single Tax
+                total_single_tax += monthly_income * (rates["income_tax_percent"] / 100.0)
                 
-                # Military tax: use percent from settings or fallback to 1% for G3
-                mil_rate = (settings.military_tax_percent / 100.0) if settings.military_tax_percent is not None else 0.01
-                total_military_tax += monthly_income * mil_rate
+                # Military tax
+                total_military_tax += monthly_income * (rates["military_tax_percent"] / 100.0)
                 
             elif settings.fop_group == FopGroup.GROUP_4:
-                # Single tax — normative monetary valuation of land × land area × rate
                 land_value = settings.normative_land_value or 0.0
                 area = settings.land_area_ha or 0.0
-                rate = (settings.income_tax_percent / 100.0) if settings.income_tax_percent is not None else 0.0095
-                # Частка річного податку на 1 місяць
-                total_single_tax += (land_value * area * rate) / 12
-                total_military_tax += rules.get("fixed_military_tax", FIXED_MILITARY_TAX)
+                total_single_tax += (land_value * area * (rates["income_tax_percent"] / 100.0)) / 12
+                total_military_tax += rates["fixed_military_tax"]
 
         return {
             "single_tax": round(total_single_tax, 2),
