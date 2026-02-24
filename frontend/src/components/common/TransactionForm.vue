@@ -65,6 +65,19 @@ watch(() => form.type, () => {
   setTimeout(() => autoSelectCategory(), 10);
 });
 
+// Auto-set account type based on category linking
+watch(() => form.category_id, (newId) => {
+  if (!newId || !txStore.categories.all) return;
+  const category = txStore.categories.all.find(c => c.id === newId);
+  if (category) {
+    // We only automate this for income to avoid confusing users on expenses 
+    // (though expenses are usually not taxed anyway, this mainly helps with income)
+    if (form.type === 'income') {
+      form.is_fop = category.is_fop_only !== false;
+    }
+  }
+});
+
 const isZedRestricted = computed(() => {
   return props.fopSettings?.fop_group === 1 || props.fopSettings?.fop_group === 4;
 });

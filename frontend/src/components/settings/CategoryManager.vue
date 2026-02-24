@@ -66,11 +66,24 @@ const handleDeleteCategory = async (cat) => {
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div 
-            v-for="cat in txStore.categories.income.filter(c => c.user_id)" 
+            v-for="cat in txStore.categories.income" 
             :key="cat.id"
             class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
           >
-            <span class="font-bold text-gray-700">{{ cat.name }}</span>
+            <div>
+              <span class="font-bold text-gray-700 block">{{ cat.name }}</span>
+              <div class="flex items-center gap-2 mt-1">
+                <span 
+                  class="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tighter"
+                  :class="cat.is_fop_only !== false ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'"
+                >
+                  {{ cat.is_fop_only !== false ? 'ФОП Карта' : 'Особиста' }}
+                </span>
+                <span v-if="!cat.user_id" class="px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded-md text-[8px] font-black uppercase tracking-tighter">
+                  Системна
+                </span>
+              </div>
+            </div>
             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button 
                 v-if="cat.name !== 'None'"
@@ -97,11 +110,24 @@ const handleDeleteCategory = async (cat) => {
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div 
-            v-for="cat in txStore.categories.expense.filter(c => c.user_id)" 
+            v-for="cat in txStore.categories.expense" 
             :key="cat.id"
             class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md"
           >
-            <span class="font-bold text-gray-700">{{ cat.name }}</span>
+            <div>
+              <span class="font-bold text-gray-700 block">{{ cat.name }}</span>
+              <div class="flex items-center gap-2 mt-1">
+                <span 
+                  class="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tighter"
+                  :class="cat.is_fop_only !== false ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'"
+                >
+                  {{ cat.is_fop_only !== false ? 'ФОП Карта' : 'Особиста' }}
+                </span>
+                <span v-if="!cat.user_id" class="px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded-md text-[8px] font-black uppercase tracking-tighter">
+                  Системна
+                </span>
+              </div>
+            </div>
             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button 
                 v-if="cat.name !== 'None'"

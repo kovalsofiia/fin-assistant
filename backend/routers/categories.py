@@ -37,14 +37,27 @@ def get_categories(user_id: Optional[str] = None):
 
         response = query.execute()
         
-        income_cats = [c for c in response.data if c['type'] == 'income']
-        expense_cats = [c for c in response.data if c['type'] == 'expense']
+        # 4. Фільтруємо дублікати (якщо користувач перекриває системну категорію своєю)
+        # Групуємо по (name, type)
+        merged_categories = {}
+        for cat in response.data:
+            key = (cat['name'], cat['type'])
+            # Якщо вже є така категорія і вона належить користувачу - ігноруємо системну
+            if key in merged_categories:
+                if merged_categories[key]['user_id'] is None and cat['user_id'] is not None:
+                    merged_categories[key] = cat
+            else:
+                merged_categories[key] = cat
+        
+        final_list = list(merged_categories.values())
+        income_cats = [c for c in final_list if c['type'] == 'income']
+        expense_cats = [c for c in final_list if c['type'] == 'expense']
         
         return {
             "income": income_cats,
             "expense": expense_cats,
-            "all": response.data,
-            "user_is_fop": user_is_fop # Повертаємо фронтенду інфо про статус
+            "all": final_list,
+            "user_is_fop": user_is_fop
         }
     except Exception as e:
         print(f"Categories error: {e}")
@@ -57,7 +70,8 @@ def create_category(cat: CategoryCreate):
         data = {
             "name": cat.name,
             "type": cat.type,
-            "user_id": cat.user_id
+            "user_id": cat.user_id,
+            "is_fop_only": cat.is_fop_only
         }
         response = supabase.table("categories").insert(data).execute()
         return response.data
@@ -124,19 +138,45 @@ def delete_category(category_id: str, user_id: str):
 
 @router.patch("/{category_id}")
 def update_category(category_id: str, user_id: str, payload: dict):
-    """Оновити назву власної категорії"""
+    """Оновити власну категорію або створити копію системної"""
     try:
-        new_name = payload.get("name")
-        if not new_name:
-            raise HTTPException(status_code=400, detail="Назва не може бути порожньою")
+        data_to_update = {}
+        if payload.get("name"):
+            data_to_update["name"] = payload.get("name")
+        if "is_fop_only" in payload:
+            data_to_update["is_fop_only"] = payload.get("is_fop_only")
 
-        response = supabase.table("categories").update({"name": new_name})\
-            .eq("id", category_id)\
-            .eq("user_id", user_id)\
-            .execute()
+        if not data_to_update:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        # 1. Перевіряємо категорію
+        cat_res = supabase.table("categories").select("*").eq("id", category_id).execute()
+        if not cat_res.data:
+            raise HTTPException(status_code=404, detail="Категорію не знайдено")
+        
+        target_cat = cat_res.data[0]
+
+        # 2. Якщо категорія системна (user_id is None), створюємо НОВУ для користувача
+        if target_cat['user_id'] is None:
+            new_cat_data = {
+                "name": data_to_update.get("name", target_cat["name"]),
+                "type": target_cat["type"],
+                "user_id": user_id,
+                "is_fop_only": data_to_update.get("is_fop_only", target_cat.get("is_fop_only", True))
+            }
+            response = supabase.table("categories").insert(new_cat_data).execute()
+        else:
+            # 3. Якщо категорія вже належить користувачу - просто оновлюємо
+            if target_cat['user_id'] != user_id:
+                raise HTTPException(status_code=403, detail="Ви не можете змінити категорію іншого користувача")
+                
+            response = supabase.table("categories").update(data_to_update)\
+                .eq("id", category_id)\
+                .eq("user_id", user_id)\
+                .execute()
             
         if not response.data:
-            raise HTTPException(status_code=403, detail="Не можна змінити цю категорію (вона системна або не знайдена)")
+            raise HTTPException(status_code=500, detail="Не вдалося зберегти зміни")
             
         return response.data[0]
     except Exception as e:

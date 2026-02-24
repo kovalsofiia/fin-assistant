@@ -154,7 +154,7 @@ export const useTransactionStore = defineStore('transactions', {
     },
 
     async createNewCategory(categoryData) {
-      // categoryData: { name, type, user_id }
+      // categoryData: { name, type, user_id, is_fop_only }
       await api.createCategory(categoryData);
       await this.fetchCategories(); // Оновлюємо список категорій
     },
