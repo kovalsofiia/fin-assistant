@@ -7,6 +7,7 @@ export const useBudgetStore = defineStore('budgets', {
         budgets: [],
         budgetProgress: [],
         reports: null,
+        taxHistory: [],
         isLoading: false,
         error: null
     }),
@@ -69,6 +70,45 @@ export const useBudgetStore = defineStore('budgets', {
                 this.error = "Не вдалося завантажити звіти";
             } finally {
                 this.isLoading = false;
+            }
+        },
+
+        async fetchTaxHistory() {
+            this.isLoading = true;
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                const res = await api.getTaxHistory(user.id);
+                this.taxHistory = res.data;
+            } catch (e) {
+                console.error("Error fetching tax history:", e);
+                this.error = "Не вдалося завантажити історію податків";
+            } finally {
+                this.isLoading = false;
+            }
+        },
+
+        async syncTaxMonth(year, month) {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                await api.syncTaxMonth(user.id, year, month);
+                await this.fetchTaxHistory();
+            } catch (e) {
+                console.error("Error syncing tax month:", e);
+                throw e;
+            }
+        },
+
+        async syncAllTaxes() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                await api.syncAllTaxes(user.id);
+                await this.fetchTaxHistory();
+            } catch (e) {
+                console.error("Error syncing all taxes:", e);
+                throw e;
             }
         }
     }

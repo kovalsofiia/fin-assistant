@@ -16,7 +16,7 @@ import {
   BarElement,
   Filler
 } from 'chart.js';
-import { PieChart, ArrowUpRight, ArrowDownLeft, TrendingUp, BarChart3, CalendarDays } from 'lucide-vue-next';
+import { PieChart, ArrowUpRight, ArrowDownLeft, TrendingUp, BarChart3, CalendarDays, Loader2, Plus, History } from 'lucide-vue-next';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import TransactionFilters from '@/components/transactions/TransactionFilters.vue';
 import BudgetCard from '@/components/analytics/BudgetCard.vue';
@@ -28,7 +28,6 @@ import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import { useBudgetStore } from '@/stores/budgetStore';
 import { supabase } from '@/services/supabase';
 import api from '@/services/api';
-import { Plus } from 'lucide-vue-next';
 import { useTransactionActions } from '@/actions/useTransactionActions';
 
 ChartJS.register(
@@ -44,6 +43,7 @@ const route = useRoute();
 const activeTab = ref('overview');
 const isBudgetFormOpen = ref(false);
 const budgetToEdit = ref(null);
+const isSyncingTax = ref(false);
 
 const userId = ref(null);
 
@@ -84,7 +84,8 @@ onMounted(async () => {
   await Promise.all([
     store.fetchInitialData(), // Fetch transactions and categories
     budgetStore.fetchBudgetProgress(),
-    budgetStore.fetchAnalyticsReports('monthly')
+    budgetStore.fetchAnalyticsReports('monthly'),
+    budgetStore.fetchTaxHistory()
   ]);
 });
 
@@ -99,6 +100,9 @@ watch(() => route.query.tab, (newTab) => {
 
 watch(activeTab, (newTab) => {
   router.replace({ query: { ...route.query, tab: newTab } });
+  if (newTab === 'history') {
+    budgetStore.fetchTaxHistory();
+  }
 });
 
 const openBudgetForm = (budget = null) => {
@@ -115,6 +119,17 @@ const deleteBudget = async (id) => {
   if (confirm('Видалити цей бюджет?')) {
     const { data: { user } } = await supabase.auth.getUser();
     await budgetStore.deleteBudget(id, user.id);
+  }
+};
+
+const syncAllHistory = async () => {
+  isSyncingTax.value = true;
+  try {
+    await budgetStore.syncAllTaxes();
+  } catch (e) {
+    console.error("Sync error", e);
+  } finally {
+    isSyncingTax.value = false;
   }
 };
 
@@ -446,7 +461,7 @@ const categoryAreaOptions = {
     <!-- Tabs Navigation -->
     <div class="flex flex-wrap gap-2 mb-8 bg-gray-100/50 p-2 rounded-[2rem] max-w-fit">
       <button 
-        v-for="tab in [{id: 'overview', label: 'Огляд'}, {id: 'transactions', label: 'Транзакції'}, {id: 'budgets', label: 'Бюджети'}, {id: 'reports', label: 'Аналіз поведінки'}]" 
+        v-for="tab in [{id: 'overview', label: 'Огляд'}, {id: 'transactions', label: 'Транзакції'}, {id: 'budgets', label: 'Бюджети'}, {id: 'history', label: 'Історія податків'}, {id: 'reports', label: 'Аналіз поведінки'}]" 
         :key="tab.id"
         @click="activeTab = tab.id"
         class="px-6 py-3 rounded-3xl font-bold transition-all duration-300 outline-none"
@@ -671,6 +686,75 @@ const categoryAreaOptions = {
           @edit="openBudgetForm"
           @delete="deleteBudget"
         />
+      </div>
+    </div> <!-- Закінчення activeTab === 'budgets' -->
+
+    <!-- Вкладка Історія податків -->
+    <div v-if="activeTab === 'history'" class="animate-fade-in space-y-8">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+        <div>
+          <h2 class="text-2xl font-black text-gray-800 tracking-tight">Історія нарахувань</h2>
+          <p class="text-sm font-bold text-gray-400 mt-1">Архів розрахованих податків та доходів ФОП</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <button 
+            @click="syncAllHistory"
+            :disabled="isSyncingTax"
+            class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 px-8 rounded-2xl transition-all shadow-lg flex items-center gap-3"
+          >
+            <Loader2 v-if="isSyncingTax" class="animate-spin" :size="20" />
+            <TrendingUp v-else :size="20" stroke-width="3" />
+            Синхронізувати всю історію
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-200/40 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-50/50 border-b border-gray-100">
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest">Період</th>
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest">Дохід ФОП</th>
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest">ЄСВ</th>
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest">Єдиний (ЄП)</th>
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest">Військовий (ВЗ)</th>
+                <th class="px-8 py-5 text-xs font-black text-gray-400 uppercase tracking-widest text-right">Разом</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <tr v-for="record in budgetStore.taxHistory" :key="record.id" class="hover:bg-blue-50/30 transition-colors group">
+                <td class="px-8 py-6">
+                  <span class="font-black text-gray-900">{{ record.month.toString().padStart(2, '0') }}.{{ record.year }}</span>
+                </td>
+                <td class="px-8 py-6 font-bold text-gray-700">
+                  {{ Number(record.fop_income).toLocaleString('uk-UA') }} ₴
+                </td>
+                <td class="px-8 py-6 font-black" :class="record.esv > 0 ? 'text-indigo-600' : 'text-gray-300'">
+                  {{ Number(record.esv).toLocaleString('uk-UA') }} ₴
+                </td>
+                <td class="px-8 py-6 font-black" :class="record.income_tax > 0 ? 'text-blue-600' : 'text-gray-300'">
+                  {{ Number(record.income_tax).toLocaleString('uk-UA') }} ₴
+                </td>
+                <td class="px-8 py-6 font-black" :class="record.military_tax > 0 ? 'text-fuchsia-600' : 'text-gray-300'">
+                  {{ Number(record.military_tax).toLocaleString('uk-UA') }} ₴
+                </td>
+                <td class="px-8 py-6 font-black text-gray-900 text-right">
+                  {{ Number(record.esv + record.income_tax + record.military_tax).toLocaleString('uk-UA') }} ₴
+                </td>
+              </tr>
+              <tr v-if="budgetStore.taxHistory.length === 0">
+                <td colspan="6" class="px-8 py-20 text-center">
+                  <div class="flex flex-col items-center gap-4 text-gray-300">
+                    <CalendarDays :size="48" stroke-width="1.5" />
+                    <p class="font-black uppercase tracking-widest text-sm">Історія поки що порожня</p>
+                    <p class="text-xs text-gray-400 max-w-xs mx-auto">Натисніть "Оновити поточний місяць", щоб зафіксувати дані для поточного періоду.</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 

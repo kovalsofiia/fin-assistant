@@ -8,10 +8,16 @@ from core.constants import (
     SINGLE_TAX_G1, 
     SINGLE_TAX_G2, 
     FIXED_MILITARY_TAX,
+    MIN_ESV,
+    MIN_ESV_2025,
+    MIN_ESV_2026,
     LIMIT_G1,
     LIMIT_G2,
     LIMIT_G3,
-    MIN_ESV
+    DEFAULT_G3_RATE,
+    DEFAULT_G3_VAT_RATE,
+    DEFAULT_G4_RATE,
+    DEFAULT_MILITARY_RATE
 )
 
 ESV_MONTHLY_2025 = MIN_ESV # Alias for clarity
@@ -94,15 +100,15 @@ class TaxService:
         fallback_rules = {
             "year": year,
             "month": month,
-            "esv_value": 1760.00 if year < 2026 else 1902.34,
+            "esv_value": MIN_ESV_2025 if year < 2026 else MIN_ESV_2026,
             "single_tax_g1": SINGLE_TAX_G1,
             "single_tax_g2": SINGLE_TAX_G2,
             "fixed_military_tax": FIXED_MILITARY_TAX,
             "limit_g1": LIMIT_G1,
             "limit_g2": LIMIT_G2,
             "limit_g3": LIMIT_G3,
-            "income_tax_percent": None, # Will be determined by system defaults (3/5%)
-            "military_tax_percent": 1.0 if year >= 2025 else 1.5 # Example transition logic
+            "income_tax_percent": None, # Will be determined by group-specific defaults
+            "military_tax_percent": DEFAULT_MILITARY_RATE
         }
         
         try:
@@ -135,13 +141,13 @@ class TaxService:
         Отримує відсоткові ставки податків (Єдиний та Військовий) з урахуванням оверрайдів.
         """
         # Дефолтні значення на основі групи та ПДВ
-        default_income_rate = 5.0
+        default_income_rate = DEFAULT_G3_RATE
         if settings.fop_group == FopGroup.GROUP_3:
-            default_income_rate = 3.0 if settings.is_vat_payer else 5.0
+            default_income_rate = DEFAULT_G3_VAT_RATE if settings.is_vat_payer else DEFAULT_G3_RATE
         elif settings.fop_group == FopGroup.GROUP_4:
-            default_income_rate = 0.95
+            default_income_rate = DEFAULT_G4_RATE
             
-        default_military_rate = 1.0 # За замовчуванням 1% для 3-ї групи у 2025
+        default_military_rate = DEFAULT_MILITARY_RATE
 
         rates = {
             "income_tax_percent": default_income_rate,
@@ -213,7 +219,7 @@ class TaxService:
 
         # 2. Глобальні правила (Пріоритет №2)
         rules = TaxService.get_tax_rules(year, month)
-        base_esv = float(rules.get("esv_value", 1760.00))
+        base_esv = float(rules.get("esv_value", MIN_ESV))
         
         # 3. Перевірка налаштувань користувача (для майбутніх періодів)
         today = date.today()
@@ -253,6 +259,27 @@ class TaxService:
             
             # Отримуємо правила для конкретного місяця
             rules = TaxService.get_tax_rules(curr_y, curr_m)
+            
+            # Перевірка дати реєстрації (Правило: якщо > 20 числа, то з наступного місяця)
+            is_taxable_month = True
+            if settings.registration_date:
+                reg_date = settings.registration_date
+                # Визначаємо перший місяць, за який треба платити
+                if reg_date.day > 20:
+                    # Починаємо з наступного місяця
+                    first_payable_year = reg_date.year + (reg_date.month // 12)
+                    first_payable_month = (reg_date.month % 12) + 1
+                else:
+                    # Починаємо з поточного місяця
+                    first_payable_year = reg_date.year
+                    first_payable_month = reg_date.month
+                
+                # Порівнюємо поточний місяць розрахунку з першим платним місяцем
+                if (curr_y < first_payable_year) or (curr_y == first_payable_year and curr_m < first_payable_month):
+                    is_taxable_month = False
+            
+            if not is_taxable_month:
+                continue # Пропускаємо місяць повністю (ні ЄСВ, ні ЄП, ні ВЗ)
             
             # 1. ЄСВ
             total_esv += TaxService.get_esv_rate(user_id, settings, curr_y, curr_m)
