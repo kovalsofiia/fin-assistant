@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.encoders import jsonable_encoder
 from core.database import supabase
 from models.profile import ProfileCreate, ProfileUpdate
 
@@ -51,7 +52,7 @@ def update_profile(user_id: str, profile: ProfileUpdate):
     """
     try:
         # exclude_unset=True: беремо тільки ті поля, які реально передали в JSON
-        update_data = profile.dict(exclude_unset=True)
+        update_data = jsonable_encoder(profile.dict(exclude_unset=True))
         
         if not update_data:
             raise HTTPException(status_code=400, detail="Не передано даних для оновлення")

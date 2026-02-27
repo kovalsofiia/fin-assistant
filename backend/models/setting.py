@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import date
 from models.common import FopGroup, TaxSystem, ActivityType, ReportingPeriod
 from core.constants import (
     MIN_TAX_PERCENT, 
@@ -11,6 +12,8 @@ from core.constants import (
 class FopSettingsBase(BaseModel):
     # Валідація: Група тільки 1, 2, 3 або 4
     fop_group: Optional[FopGroup] = None
+    # Дата реєстрації ФОП
+    registration_date: Optional[date] = None
     # ЗЕД: True/False
     is_zed: Optional[bool] = None
     # Податок: від 0% до 100%
