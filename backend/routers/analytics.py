@@ -10,7 +10,7 @@ from models.common import ReportingPeriod
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 @router.get("/reports")
-def get_reports(user_id: str, period: str = "monthly"):
+def get_reports(user_id: str, period: str = "monthly", start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
     Повертає загальні витрати та доходи згруповані за категоріями для вибраного періоду,
     а також підказки та прогнози поведінки.
@@ -19,7 +19,19 @@ def get_reports(user_id: str, period: str = "monthly"):
         query = supabase.table("transactions").select("transaction_amount, transaction_type, category_id, transaction_date, is_fop").eq("user_id", user_id)
         
         today = datetime.now().date()
-        if period == "monthly":
+        
+        if start_date and end_date:
+            query = query.gte("transaction_date", start_date).lte("transaction_date", end_date)
+            # Determine effective period for tips logic
+            try:
+                sd = datetime.fromisoformat(start_date).date()
+                ed = datetime.fromisoformat(end_date).date()
+                delta = (ed - sd).days
+                if delta > 25 and delta < 32:
+                    period = "monthly"
+            except:
+                pass
+        elif period == "monthly":
             first_day = today.replace(day=1)
             query = query.gte("transaction_date", first_day.isoformat())
         elif period == "weekly":

@@ -58,12 +58,12 @@ export const useBudgetStore = defineStore('budgets', {
             await this.fetchBudgetProgress();
         },
 
-        async fetchAnalyticsReports(period = 'monthly') {
+        async fetchAnalyticsReports(period = 'monthly', startDate = null, endDate = null) {
             this.isLoading = true;
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) return;
-                const res = await api.getAnalyticsReports(user.id, period);
+                const res = await api.getAnalyticsReports(user.id, period, startDate, endDate);
                 this.reports = res.data;
             } catch (e) {
                 console.error("Error fetching reports:", e);

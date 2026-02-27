@@ -7,16 +7,24 @@ import { getCategoryName } from '@/utils/format';
 export const useTransactionStore = defineStore('transactions', {
   state: () => {
     // ... (rest of state remains the same)
+    const { start, end } = getMonthRange();
     let savedFilters = {
-      startDate: '',
-      endDate: '',
+      startDate: start,
+      endDate: end,
       type: '',
-      categoryId: ''
+      categoryId: '',
+      period: 'this_month'
     };
+
     try {
       const stored = localStorage.getItem('transaction_filters');
       if (stored) {
-        savedFilters = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        // Ensure we don't restore invalid NaN dates
+        if (parsed.startDate && parsed.startDate.includes('NaN')) delete parsed.startDate;
+        if (parsed.endDate && parsed.endDate.includes('NaN')) delete parsed.endDate;
+
+        savedFilters = { ...savedFilters, ...parsed };
       }
     } catch (e) {
       console.error("Error parsing saved filters:", e);

@@ -5,8 +5,12 @@
  * @returns {Object} { start: string, end: string }
  */
 export const getMonthRange = (year, month) => {
-    const start = new Date(year, month, 1);
-    const end = new Date(year, month + 1, 0);
+    const today = new Date();
+    const targetYear = year !== undefined ? year : today.getFullYear();
+    const targetMonth = month !== undefined ? month : today.getMonth();
+
+    const start = new Date(targetYear, targetMonth, 1);
+    const end = new Date(targetYear, targetMonth + 1, 0);
 
     const formatDate = (date) => {
         const d = new Date(date);

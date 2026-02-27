@@ -103,6 +103,18 @@ watch(activeTab, (newTab) => {
   if (newTab === 'history') {
     budgetStore.fetchTaxHistory();
   }
+  if (newTab === 'reports') {
+    const periodMap = {
+      'today': 'daily',
+      'last_week': 'weekly',
+      'this_month': 'monthly',
+      'last_month': 'monthly',
+      'last_3_months': 'yearly',
+      'custom': 'monthly'
+    };
+    const period = periodMap[store.filters.period] || 'monthly';
+    budgetStore.fetchAnalyticsReports(period, store.filters.startDate, store.filters.endDate);
+  }
 });
 
 const openBudgetForm = (budget = null) => {
@@ -133,12 +145,26 @@ const syncAllHistory = async () => {
   }
 };
 
-watch(() => store.filters, () => {
+watch(() => store.filters, (newFilters) => {
   store.fetchTransactions();
+  
+  if (activeTab.value === 'reports') {
+    const periodMap = {
+      'today': 'daily',
+      'last_week': 'weekly',
+      'this_month': 'monthly',
+      'last_month': 'monthly',
+      'last_3_months': 'yearly',
+      'custom': 'monthly'
+    };
+    const period = periodMap[newFilters.period] || 'monthly';
+    budgetStore.fetchAnalyticsReports(period, newFilters.startDate, newFilters.endDate);
+  }
 }, { deep: true });
 
 const resetFilters = () => {
-  store.filters = { startDate: '', endDate: '', type: '', categoryId: '' };
+  const { start, end } = store.getMonthRange();
+  store.filters = { startDate: start, endDate: end, type: '', categoryId: '', period: 'this_month' };
 };
 
 // Helper to accumulate amounts by category
@@ -471,13 +497,15 @@ const categoryAreaOptions = {
       </button>
     </div>
 
+    <!-- Filters Bar - Unified for all tabs -->
+    <TransactionFilters 
+      v-if="['overview', 'transactions', 'reports'].includes(activeTab)"
+      v-model:filters="store.filters"
+      @reset="resetFilters"
+    />
+
     <!-- Обгортка для вкладки Огляд -->
     <div v-show="activeTab === 'overview'">
-      <!-- Filters Bar Sync with Transactions -->
-      <TransactionFilters 
-        v-model:filters="store.filters"
-        @reset="resetFilters"
-      />
 
     <div v-if="store.isLoading" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-gray-200/50 border border-gray-50 aspect-square flex flex-col items-center">
@@ -648,11 +676,6 @@ const categoryAreaOptions = {
         </button>
       </div>
 
-      <TransactionFilters 
-        v-model:filters="store.filters"
-        @reset="resetFilters"
-      />
-
       <TransactionList 
         :transactions="store.transactions"
         :isLoading="store.isLoading"
@@ -762,11 +785,6 @@ const categoryAreaOptions = {
     <div v-if="activeTab === 'reports'" class="animate-fade-in flex flex-col gap-8">
       <div class="flex justify-between items-center mb-6">
          <h2 class="text-2xl font-black text-gray-800 tracking-tight">Розширена Аналітика</h2>
-         <select @change="budgetStore.fetchAnalyticsReports($event.target.value)" class="px-4 py-2 bg-white border-2 border-gray-100 rounded-xl font-bold outline-none appearance-none cursor-pointer">
-            <option value="monthly">Цього місяця</option>
-            <option value="weekly">Цього тижня</option>
-            <option value="yearly">Цього року</option>
-         </select>
       </div>
 
       <div v-if="budgetStore.reports" class="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -19,7 +19,24 @@ const localFilters = computed({
   set: (val) => emit('update:filters', val)
 });
 
-const quickDateFilter = ref('');
+const quickDateFilter = computed({
+  get: () => localFilters.value.period || '',
+  set: (val) => {
+    localFilters.value.period = val;
+    if (val && val !== 'custom') {
+      applyDateFilter(val);
+    } else if (val === '') {
+      // "All time" - use min/max dates from store if available
+      if (store.lifetimeSummary?.firstDate && store.lifetimeSummary?.lastDate) {
+        localFilters.value.startDate = store.lifetimeSummary.firstDate;
+        localFilters.value.endDate = store.lifetimeSummary.lastDate;
+      } else {
+        localFilters.value.startDate = '';
+        localFilters.value.endDate = '';
+      }
+    }
+  }
+});
 
 const applyDateFilter = (range) => {
   const today = new Date();
@@ -62,16 +79,7 @@ const applyDateFilter = (range) => {
   }
 };
 
-watch(quickDateFilter, (newVal) => {
-  if (newVal === 'custom') {
-    // Keep whatever is in the inputs
-  } else if (newVal) {
-    applyDateFilter(newVal);
-  } else {
-    localFilters.value.startDate = '';
-    localFilters.value.endDate = '';
-  }
-});
+// Watcher removed as we use computed setter
 
 const resetFilters = () => {
   quickDateFilter.value = '';
@@ -79,10 +87,24 @@ const resetFilters = () => {
 };
 
 onMounted(() => {
-  if (localFilters.value.startDate || localFilters.value.endDate) {
-    quickDateFilter.value = 'custom';
+  if (!localFilters.value.period && (localFilters.value.startDate || localFilters.value.endDate)) {
+    localFilters.value.period = 'custom';
+  }
+  
+  // If period is already "All time" on mount, try to sync dates
+  if (localFilters.value.period === '' && store.lifetimeSummary?.firstDate) {
+    localFilters.value.startDate = store.lifetimeSummary.firstDate;
+    localFilters.value.endDate = store.lifetimeSummary.lastDate;
   }
 });
+
+// Watch for lifetimeSummary to update dates if "All time" is selected
+watch(() => store.lifetimeSummary, (newVal) => {
+  if (localFilters.value.period === '' && newVal?.firstDate) {
+    localFilters.value.startDate = newVal.firstDate;
+    localFilters.value.endDate = newVal.lastDate;
+  }
+}, { deep: true });
 </script>
 
 <template>

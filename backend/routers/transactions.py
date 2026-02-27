@@ -128,6 +128,7 @@ def get_transaction_summary(
         fop_income = 0.0
         expense = 0.0
         months = set()
+        transaction_dates = []
         
         for tx in response.data:
             amount = float(tx["transaction_amount"])
@@ -136,6 +137,7 @@ def get_transaction_summary(
             
             if date_str:
                 months.add(date_str[:7])
+                transaction_dates.append(date_str)
 
             if tx["transaction_type"] == "income":
                 income += amount
@@ -144,13 +146,18 @@ def get_transaction_summary(
             else:
                 expense += amount
         
+        first_date = min(transaction_dates) if transaction_dates else None
+        last_date = max(transaction_dates) if transaction_dates else None
+
         return {
             "totalIncome": round(income, 2),
             "totalFopIncome": round(fop_income, 2),
             "totalExpense": round(expense, 2),
             "balance": round(income - expense, 2),
             "balanceFop": round(fop_income - expense, 2),
-            "monthsCount": len(months)
+            "monthsCount": len(months),
+            "firstDate": first_date,
+            "lastDate": last_date
         }
     except Exception as e:
         print(f"Summary Error: {e}")
