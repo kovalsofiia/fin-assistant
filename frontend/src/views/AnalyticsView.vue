@@ -29,6 +29,7 @@ import { useBudgetStore } from '@/stores/budgetStore';
 import { supabase } from '@/services/supabase';
 import api from '@/services/api';
 import { Plus } from 'lucide-vue-next';
+import { useTransactionActions } from '@/actions/useTransactionActions';
 
 ChartJS.register(
   Title, Tooltip, Legend, ArcElement, CategoryScale, 
@@ -44,27 +45,27 @@ const activeTab = ref('overview');
 const isBudgetFormOpen = ref(false);
 const budgetToEdit = ref(null);
 
-// Transaction management state
 const userId = ref(null);
-const isModalOpen = ref(false);
-const isCategoryModalOpen = ref(false); 
-const isSubmitting = ref(false);
-const editingTxId = ref(null);
-const fopSettings = ref(null);
-const isDetailModalOpen = ref(false);
-const selectedTransaction = ref(null);
 
-const initialFormState = {
-  type: 'expense',
-  amount: '',
-  date: new Date().toISOString().split('T')[0], 
-  category_id: '',
-  description: '',
-  currency: 'UAH',
-  manual_rate: '',
-  isZed: false
-};
-const form = ref({ ...initialFormState });
+// Transaction logic from centralized composable
+const {
+  isModalOpen,
+  isCategoryModalOpen,
+  isSubmitting,
+  editingTxId,
+  fopSettings,
+  isDetailModalOpen,
+  selectedTransaction,
+  form,
+  openCreateModal,
+  openTransactionDetails,
+  submitTransaction,
+  handleTransactionUpdate,
+  fetchFopSettings
+} = useTransactionActions(userId, async () => {
+  await store.fetchTransactions();
+  await budgetStore.fetchBudgetProgress();
+});
 
 onMounted(async () => {
   // Check for tab in query
@@ -76,12 +77,7 @@ onMounted(async () => {
   if (user) {
     userId.value = user.id;
     // Fetch settings for transaction form
-    try {
-      const settingsRes = await api.getFopSettings(user.id);
-      fopSettings.value = settingsRes.data;
-    } catch (e) {
-      console.error("Error loading FOP settings:", e);
-    }
+    await fetchFopSettings();
   }
 
   // Fetch everything needed for analytics
@@ -91,54 +87,6 @@ onMounted(async () => {
     budgetStore.fetchAnalyticsReports('monthly')
   ]);
 });
-
-const openCreateModal = () => {
-  editingTxId.value = null; 
-  form.value = { ...initialFormState }; 
-  isModalOpen.value = true;
-};
-
-const submitTransaction = async () => {
-  if (form.value.amount <= 0) return;
-  isSubmitting.value = true;
-
-  try {
-    const payload = {
-      user_id: userId.value,
-      category_id: form.value.category_id,
-      type: form.value.type,
-      amount: parseFloat(form.value.amount),
-      date: form.value.date,
-      description: form.value.description,
-      currency: form.value.isZed ? form.value.currency : 'UAH',
-      manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null
-    };
-
-    if (editingTxId.value) {
-      await store.editTransaction(editingTxId.value, userId.value, payload);
-    } else {
-      await store.addTransaction(payload);
-    }
-    isModalOpen.value = false;
-    // Refresh budget data as it depends on transactions
-    await budgetStore.fetchBudgetProgress();
-  } catch (e) {
-    console.error(e);
-  } finally {
-    isSubmitting.value = false;
-  }
-};
-
-const openTransactionDetails = (tx) => {
-  selectedTransaction.value = tx;
-  isDetailModalOpen.value = true;
-};
-
-const handleTransactionUpdate = async () => {
-  await store.fetchTransactions();
-  await budgetStore.fetchBudgetProgress();
-  isDetailModalOpen.value = false;
-};
 
 const submitNewCategory = async () => {
   isCategoryModalOpen.value = false;

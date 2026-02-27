@@ -20,10 +20,10 @@ import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
 import CategoryModal from '@/components/common/CategoryModal.vue';
 import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock, CreditCard, User, Plus } from 'lucide-vue-next';
+import { useTransactionActions } from '@/actions/useTransactionActions';
 
 const txStore = useTransactionStore();
 const router = useRouter();
-const settings = ref(null);
 const profile = ref(null);
 const userId = ref(null);
 const isPageLoading = ref(true);
@@ -31,34 +31,22 @@ const taxData = ref(null);
 const taxWarnings = ref([]);
 const paymentCalendar = ref([]);
 
-// Transaction Details
-const isDetailModalOpen = ref(false);
-const selectedTransaction = ref(null);
-
-// Transaction creation
-const isModalOpen = ref(false);
-const isCategoryModalOpen = ref(false);
-const isSubmitting = ref(false);
-const editingTxId = ref(null);
-
-const initialFormState = {
-  type: 'expense',
-  amount: '',
-  date: new Date().toISOString().split('T')[0], 
-  category_id: '',
-  description: '',
-  currency: 'UAH',
-  manual_rate: '',
-  isZed: false
-};
-const form = ref({ ...initialFormState });
-
-const openTransactionDetails = (tx) => {
-  selectedTransaction.value = tx;
-  isDetailModalOpen.value = true;
-};
-
-const handleTransactionUpdate = async () => {
+// Transaction logic from centralized composable
+const {
+  isModalOpen,
+  isCategoryModalOpen,
+  isSubmitting,
+  editingTxId,
+  fopSettings,
+  isDetailModalOpen,
+  selectedTransaction,
+  form,
+  openCreateModal,
+  openTransactionDetails,
+  submitTransaction,
+  handleTransactionUpdate,
+  fetchFopSettings
+} = useTransactionActions(userId, async () => {
   const filters = getPeriodFilters();
   await Promise.all([
     txStore.fetchTransactions(filters),
@@ -67,40 +55,7 @@ const handleTransactionUpdate = async () => {
   if (profile.value?.is_fop) {
     await fetchTaxAnalysis();
   }
-  isDetailModalOpen.value = false;
-};
-
-const openCreateModal = () => {
-  editingTxId.value = null; 
-  form.value = { ...initialFormState }; 
-  isModalOpen.value = true;
-};
-
-const submitTransaction = async () => {
-  if (form.value.amount <= 0) return;
-  isSubmitting.value = true;
-
-  try {
-    const payload = {
-      user_id: userId.value,
-      category_id: form.value.category_id,
-      type: form.value.type,
-      amount: parseFloat(form.value.amount),
-      date: form.value.date,
-      description: form.value.description,
-      currency: form.value.isZed ? form.value.currency : 'UAH',
-      manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null
-    };
-
-    await txStore.addTransaction(payload);
-    isModalOpen.value = false;
-    await handleTransactionUpdate();
-  } catch (e) {
-    console.error(e);
-  } finally {
-    isSubmitting.value = false;
-  }
-};
+});
 
 // Фільтрація періоду
 const currentDate = new Date();
@@ -133,11 +88,10 @@ onMounted(async () => {
 
       // Якщо ФОП - тягнемо налаштування та розрахунок податків
       if (profile.value?.is_fop) {
-        const [settingsRes] = await Promise.all([
-          api.getFopSettings(user.id),
+        await Promise.all([
+          fetchFopSettings(),
           taxRulesStore.fetchRules(currentYear.value, currentMonth.value + 1)
         ]);
-        settings.value = settingsRes.data;
         await fetchTaxAnalysis();
       }
     } catch (e) {
@@ -212,7 +166,7 @@ const monthName = computed(() => {
 const taxCalculations = computed(() => {
   if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
   
-  const isGroup3 = settings.value?.fop_group === 3;
+  const isGroup3 = fopSettings.value?.fop_group === 3;
   const incomeIsZero = (txStore.summary.totalFopIncome || 0) === 0;
 
   let ep = taxData.value.single_tax;
@@ -250,17 +204,17 @@ const realBalance = computed(() => {
   
   let epTotal = 0;
   let vzTotal = 0;
-  let esvRate = settings.value?.esv_value || rules.esv_value || rules.ESV_MONTHLY;
+  let esvRate = fopSettings.value?.esv_value || rules.esv_value || rules.ESV_MONTHLY;
   let esvTotal = monthsCount * esvRate;
 
-  if (settings.value?.fop_group === 3) {
-    const epRate = settings.value?.income_tax_percent !== null ? (settings.value.income_tax_percent / 100) : (settings.value?.is_vat_payer ? 0.03 : 0.05);
-    const vzRate = settings.value?.military_tax_percent !== null ? (settings.value.military_tax_percent / 100) : 0.01;
+  if (fopSettings.value?.fop_group === 3) {
+    const epRate = fopSettings.value?.income_tax_percent !== null ? (fopSettings.value.income_tax_percent / 100) : (fopSettings.value?.is_vat_payer ? 0.03 : 0.05);
+    const vzRate = fopSettings.value?.military_tax_percent !== null ? (fopSettings.value.military_tax_percent / 100) : 0.01;
     epTotal = totalIncome * epRate;
     vzTotal = totalIncome * vzRate;
   } else {
     // Для груп 1, 2, 4
-    const singleTaxRate = settings.value?.fop_group === 1 ? rules.single_tax_g1 : (settings.value?.fop_group === 2 ? rules.single_tax_g2 : 0);
+    const singleTaxRate = fopSettings.value?.fop_group === 1 ? rules.single_tax_g1 : (fopSettings.value?.fop_group === 2 ? rules.single_tax_g2 : 0);
     epTotal = monthsCount * (singleTaxRate || 0);
     vzTotal = monthsCount * (rules.fixed_military_tax || rules.FIXED_MILITARY_TAX || 0);
     
@@ -372,8 +326,8 @@ const getCategoryName = (id) => {
       <div v-if="profile?.is_fop" class="lg:col-span-1 space-y-6">
         <TaxWidget 
           :calculations="taxCalculations" 
-          :settings="settings" 
-          :loading="isPageLoading || !settings"
+          :settings="fopSettings" 
+          :loading="isPageLoading || !fopSettings"
         />
 
         <!-- Payment Calendar Widget (Hidden for now) -->
@@ -473,7 +427,7 @@ const getCategoryName = (id) => {
       :isOpen="isDetailModalOpen"
       :transaction="selectedTransaction"
       :userId="userId"
-      :fopSettings="settings"
+      :fopSettings="fopSettings"
       @close="isDetailModalOpen = false; selectedTransaction = null"
       @updated="handleTransactionUpdate"
       @deleted="handleTransactionUpdate"
@@ -484,7 +438,7 @@ const getCategoryName = (id) => {
       :isOpen="isModalOpen"
       :editingTxId="editingTxId"
       v-model:form="form"
-      :fopSettings="settings"
+      :fopSettings="fopSettings"
       :isSubmitting="isSubmitting"
       @close="isModalOpen = false"
       @submit="submitTransaction"
