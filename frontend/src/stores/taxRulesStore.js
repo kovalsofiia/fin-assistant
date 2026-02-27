@@ -27,20 +27,20 @@ export const useTaxRulesStore = defineStore('taxRules', {
                 }
             } catch (e) {
                 console.error("Error fetching tax rules:", e);
-                // Fallback to local constants
-                const fallback = year >= 2026 ? APP_CONSTANTS.TAX_2026 : APP_CONSTANTS.TAX_2025;
-                const normalizedFallback = {
-                    esv_value: fallback.ESV_MONTHLY,
-                    single_tax_g1: fallback.SINGLE_TAX_G1,
-                    single_tax_g2: fallback.SINGLE_TAX_G2,
-                    fixed_military_tax: fallback.FIXED_MILITARY_TAX,
-                    // Add limits if needed in frontend
-                    limit_g1: 1336000,
-                    limit_g2: 5920000,
-                    limit_g3: 9336000
+                // Fallback to defaults from constants if API fails
+                const emergencyFallback = {
+                    esv_value: APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE,
+                    single_tax_g1: APP_CONSTANTS.TAX_DEFAULTS.SINGLE_TAX_G1,
+                    single_tax_g2: APP_CONSTANTS.TAX_DEFAULTS.SINGLE_TAX_G2,
+                    fixed_military_tax: APP_CONSTANTS.TAX_DEFAULTS.FIXED_MILITARY_TAX,
+                    limit_g1: APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G1,
+                    limit_g2: APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G2,
+                    limit_g3: APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G3,
+                    military_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.MILITARY_TAX_PERCENT,
+                    income_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3
                 };
-                this.currentRules = normalizedFallback;
-                return normalizedFallback;
+                this.currentRules = emergencyFallback;
+                return emergencyFallback;
             } finally {
                 this.isLoading = false;
             }
