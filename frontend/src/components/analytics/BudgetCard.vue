@@ -15,7 +15,8 @@ const spentPercent = computed(() => {
 });
 
 const progressColor = computed(() => {
-  if (spentPercent.value >= 95) return 'bg-red-500';
+  if (spentPercent.value >= 100) return 'bg-red-600';
+  if (spentPercent.value >= 90) return 'bg-red-500';
   if (spentPercent.value >= 75) return 'bg-yellow-400';
   return 'bg-green-500';
 });
@@ -56,7 +57,12 @@ const progressColor = computed(() => {
         ></div>
       </div>
       
-      <div v-if="spentPercent >= 90" class="flex items-center gap-2 mt-4 text-red-500 bg-red-50 px-4 py-3 rounded-xl border border-red-100">
+      <!-- Сповіщення про стан бюджету -->
+      <div v-if="spentPercent >= 100" class="flex items-center gap-2 mt-4 text-white bg-red-600 px-4 py-3 rounded-xl border border-red-700 shadow-lg shadow-red-200">
+        <AlertCircle :size="18" stroke-width="2.5" />
+        <p class="text-xs font-bold uppercase tracking-wider text-white">Ліміт вичерпано!</p>
+      </div>
+      <div v-else-if="spentPercent >= 90" class="flex items-center gap-2 mt-4 text-red-500 bg-red-50 px-4 py-3 rounded-xl border border-red-100">
         <AlertCircle :size="18" stroke-width="2.5" />
         <p class="text-xs font-bold uppercase tracking-wider">Бюджет майже вичерпано!</p>
       </div>
