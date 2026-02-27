@@ -109,7 +109,7 @@ const fetchTaxAnalysis = async () => {
     const res = await api.get(`/tax/calculate`, {
       params: {
         user_id: userId.value,
-        annual_income: txStore.lifetimeSummary.totalIncome || 0,
+        annual_income: txStore.lifetimeSummary.totalFopIncome || 0,
         monthly_income: txStore.summary.totalFopIncome || 0,
         period: selectedPeriodType.value === 'month' ? 'month' : 'quarter',
         calc_date: `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-01`
@@ -166,20 +166,9 @@ const monthName = computed(() => {
 const taxCalculations = computed(() => {
   if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
   
-  const isGroup3 = fopSettings.value?.fop_group === 3;
-  const incomeIsZero = (txStore.summary.totalFopIncome || 0) === 0;
-
-  let ep = taxData.value.single_tax;
-  let vz = taxData.value.military_tax;
-  const esv = taxData.value.esv;
-
-  // Для 3-ї групи податки (ЄП та ВЗ) нараховуються лише на дохід.
-  // Якщо доходу за період немає - ці податки мають бути 0.
-  // Примітка: Бекенд вже рахує це, але ми тримаємо цей гард на фронті для впевненості.
-  if (isGroup3 && incomeIsZero) {
-    ep = 0;
-    vz = 0;
-  }
+  const ep = taxData.value.single_tax || 0;
+  const vz = taxData.value.military_tax || 0;
+  const esv = taxData.value.esv || 0;
 
   return {
     ep,
@@ -193,35 +182,11 @@ const taxCalculations = computed(() => {
 // Примітка: Це оціночне значення, оскільки ми не рахуємо кожен історичний місяць окремо на фронті.
 const realBalance = computed(() => {
   const grossBalance = txStore.lifetimeSummary.balance;
-  if (!profile.value?.is_fop || !taxData.value) return grossBalance;
+  if (!profile.value?.is_fop) return grossBalance;
 
-  // Рахуємо податки за весь період діяльності
-  const monthsCount = txStore.lifetimeSummary.monthsCount || 1;
-  const totalIncome = txStore.lifetimeSummary.totalIncome || 0;
-  
-  // Використовуємо правила з бази (currentRules) або дефолти
-  const rules = taxRulesStore.currentRules || (currentYear.value >= 2026 ? APP_CONSTANTS.TAX_2026 : APP_CONSTANTS.TAX_2025);
-  
-  let epTotal = 0;
-  let vzTotal = 0;
-  let esvRate = fopSettings.value?.esv_value || rules.esv_value || rules.ESV_MONTHLY;
-  let esvTotal = monthsCount * esvRate;
-
-  if (fopSettings.value?.fop_group === 3) {
-    const epRate = fopSettings.value?.income_tax_percent !== null ? (fopSettings.value.income_tax_percent / 100) : (fopSettings.value?.is_vat_payer ? 0.03 : 0.05);
-    const vzRate = fopSettings.value?.military_tax_percent !== null ? (fopSettings.value.military_tax_percent / 100) : 0.01;
-    epTotal = totalIncome * epRate;
-    vzTotal = totalIncome * vzRate;
-  } else {
-    // Для груп 1, 2, 4
-    const singleTaxRate = fopSettings.value?.fop_group === 1 ? rules.single_tax_g1 : (fopSettings.value?.fop_group === 2 ? rules.single_tax_g2 : 0);
-    epTotal = monthsCount * (singleTaxRate || 0);
-    vzTotal = monthsCount * (rules.fixed_military_tax || rules.FIXED_MILITARY_TAX || 0);
-    
-    // Якщо група 4 - додаємо специфічний розрахунок за потреби (спрощено як 0 наразі)
-  }
-
-  return grossBalance - (epTotal + vzTotal + esvTotal);
+  // Якщо у нас немає розширених даних, повертаємо валовий баланс
+  // В майбутньому тут можна додати запит на /analytics/history/taxes для точного балансу
+  return grossBalance;
 });
 
 // Чистий дохід після податків (поточний період)
@@ -294,10 +259,12 @@ const getCategoryName = (id) => {
       <StatCard 
         title="Поступлення коштів"
         :amount="formatMoney(txStore.summary.totalIncome)"
+        :fopAmount="formatMoney(txStore.summary.totalFopIncome)"
         subtext="За вибраний місяць"
         variant="white"
         amountColor="blue"
         :loading="isPageLoading"
+        :showFopLoading="profile?.is_fop"
       />
 
       <StatCard 

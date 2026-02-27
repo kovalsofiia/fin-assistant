@@ -27,6 +27,14 @@ defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  fopAmount: {
+    type: [Number, String],
+    default: null
+  },
+  showFopLoading: {
+    type: Boolean,
+    default: false
   }
 });
 </script>
@@ -78,5 +86,21 @@ defineProps({
     >
       {{ subtext }}
     </span>
+
+    <!-- Спеціальне поле для ФОП доходу -->
+    <div 
+      v-if="fopAmount !== null || (loading && showFopLoading)" 
+      class="mt-3 pt-3 border-t border-gray-50 animate-fade-in"
+    >
+      <p class="text-[11px] font-bold text-blue-500 uppercase tracking-tighter opacity-80 leading-tight">
+        Надійшло на ФОП
+      </p>
+      <div v-if="loading" class="mt-1">
+        <SkeletonLoader width="80px" height="16px" borderRadius="6px" />
+      </div>
+      <p v-else class="text-sm font-black text-gray-700 mt-0.5">
+        {{ fopAmount }}
+      </p>
+    </div>
   </div>
 </template>
