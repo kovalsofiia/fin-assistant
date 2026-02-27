@@ -30,8 +30,7 @@ const handleLogout = async () => {
 
 const navigation = [
   { name: 'Дашборд', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Транзакції', path: '/transactions', icon: Receipt },
-  // { name: 'Аналітика', path: '/analytics', icon: PieChart },
+  { name: 'Аналітика', path: '/analytics', icon: PieChart },
   { name: 'Налаштування', path: '/settings', icon: Settings },
 ];
 

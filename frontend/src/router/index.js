@@ -5,7 +5,6 @@ import AuthView from '@/views/AuthView.vue';
 import OnboardingView from '@/views/OnboardingView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import DashboardView from '@/views/DashboardView.vue';
-import TransactionsView from '@/views/TransactionsView.vue';
 import AnalyticsView from '@/views/AnalyticsView.vue';
 
 const router = createRouter({
@@ -29,12 +28,6 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/transactions',
-      name: 'transactions',
-      component: TransactionsView,
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/settings',
       name: 'settings',
       component: SettingsView,
@@ -45,6 +38,10 @@ const router = createRouter({
       name: 'analytics',
       component: AnalyticsView,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/transactions',
+      redirect: '/analytics'
     }
   ]
 });

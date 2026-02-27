@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { Doughnut, Line, Bar } from 'vue-chartjs';
 import { 
@@ -19,6 +19,16 @@ import {
 import { PieChart, ArrowUpRight, ArrowDownLeft, TrendingUp, BarChart3, CalendarDays } from 'lucide-vue-next';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import TransactionFilters from '@/components/transactions/TransactionFilters.vue';
+import BudgetCard from '@/components/analytics/BudgetCard.vue';
+import BudgetForm from '@/components/analytics/BudgetForm.vue';
+import TransactionList from '@/components/transactions/TransactionList.vue';
+import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
+import CategoryModal from '@/components/common/CategoryModal.vue';
+import TransactionModal from '@/components/dashboard/TransactionModal.vue';
+import { useBudgetStore } from '@/stores/budgetStore';
+import { supabase } from '@/services/supabase';
+import api from '@/services/api';
+import { Plus } from 'lucide-vue-next';
 
 ChartJS.register(
   Title, Tooltip, Legend, ArcElement, CategoryScale, 
@@ -26,15 +36,139 @@ ChartJS.register(
 );
 
 const store = useTransactionStore();
+const budgetStore = useBudgetStore();
 const router = useRouter();
+const route = useRoute();
+
+const activeTab = ref('overview');
+const isBudgetFormOpen = ref(false);
+const budgetToEdit = ref(null);
+
+// Transaction management state
+const userId = ref(null);
+const isModalOpen = ref(false);
+const isCategoryModalOpen = ref(false); 
+const isSubmitting = ref(false);
+const editingTxId = ref(null);
+const fopSettings = ref(null);
+const isDetailModalOpen = ref(false);
+const selectedTransaction = ref(null);
+
+const initialFormState = {
+  type: 'expense',
+  amount: '',
+  date: new Date().toISOString().split('T')[0], 
+  category_id: '',
+  description: '',
+  currency: 'UAH',
+  manual_rate: '',
+  isZed: false
+};
+const form = ref({ ...initialFormState });
 
 onMounted(async () => {
+  // Check for tab in query
+  if (route.query.tab) {
+    activeTab.value = route.query.tab;
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    userId.value = user.id;
+    // Fetch settings for transaction form
+    try {
+      const settingsRes = await api.getFopSettings(user.id);
+      fopSettings.value = settingsRes.data;
+    } catch (e) {
+      console.error("Error loading FOP settings:", e);
+    }
+  }
+
   // Fetch everything needed for analytics
   await Promise.all([
-    store.fetchTransactions(),
-    store.fetchCategories()
+    store.fetchInitialData(), // Fetch transactions and categories
+    budgetStore.fetchBudgetProgress(),
+    budgetStore.fetchAnalyticsReports('monthly')
   ]);
 });
+
+const openCreateModal = () => {
+  editingTxId.value = null; 
+  form.value = { ...initialFormState }; 
+  isModalOpen.value = true;
+};
+
+const submitTransaction = async () => {
+  if (form.value.amount <= 0) return;
+  isSubmitting.value = true;
+
+  try {
+    const payload = {
+      user_id: userId.value,
+      category_id: form.value.category_id,
+      type: form.value.type,
+      amount: parseFloat(form.value.amount),
+      date: form.value.date,
+      description: form.value.description,
+      currency: form.value.isZed ? form.value.currency : 'UAH',
+      manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null
+    };
+
+    if (editingTxId.value) {
+      await store.editTransaction(editingTxId.value, userId.value, payload);
+    } else {
+      await store.addTransaction(payload);
+    }
+    isModalOpen.value = false;
+    // Refresh budget data as it depends on transactions
+    await budgetStore.fetchBudgetProgress();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+const openTransactionDetails = (tx) => {
+  selectedTransaction.value = tx;
+  isDetailModalOpen.value = true;
+};
+
+const handleTransactionUpdate = async () => {
+  await store.fetchTransactions();
+  await budgetStore.fetchBudgetProgress();
+  isDetailModalOpen.value = false;
+};
+
+const submitNewCategory = async () => {
+  isCategoryModalOpen.value = false;
+};
+
+// Sync tab with query
+watch(() => route.query.tab, (newTab) => {
+  if (newTab) activeTab.value = newTab;
+});
+
+watch(activeTab, (newTab) => {
+  router.replace({ query: { ...route.query, tab: newTab } });
+});
+
+const openBudgetForm = (budget = null) => {
+  budgetToEdit.value = budget;
+  isBudgetFormOpen.value = true;
+};
+
+const closeBudgetForm = () => {
+  isBudgetFormOpen.value = false;
+  budgetToEdit.value = null;
+};
+
+const deleteBudget = async (id) => {
+  if (confirm('Видалити цей бюджет?')) {
+    const { data: { user } } = await supabase.auth.getUser();
+    await budgetStore.deleteBudget(id, user.id);
+  }
+};
 
 watch(() => store.filters, () => {
   store.fetchTransactions();
@@ -46,6 +180,7 @@ const resetFilters = () => {
 
 // Helper to accumulate amounts by category
 const getChartData = (type) => {
+  if (!store.transactions) return { labels: [], datasets: [{ data: [], backgroundColor: [] }], catIds: [] };
   const filtered = store.transactions.filter(t => t.transaction_type === type);
   const categoryTotals = {};
   
@@ -90,6 +225,7 @@ const selectedTrendCategoryId = ref('');
 
 // Get all unique dates from transactions, sorted
 const chartLabels = computed(() => {
+  if (!store.transactions || store.transactions.length === 0) return [];
   const dates = [...new Set(store.transactions.map(t => t.transaction_date))];
   return dates.sort((a, b) => new Date(a) - new Date(b));
 });
@@ -97,6 +233,7 @@ const chartLabels = computed(() => {
 // Helper to group transactions by date and type
 const getGroupedByDate = (type, categoryId = null) => {
   const grouped = {};
+  if (!store.transactions) return {};
   store.transactions.forEach(tx => {
     if (type && tx.transaction_type !== type) return;
     if (categoryId && tx.category_id !== categoryId) return;
@@ -354,15 +491,30 @@ const categoryAreaOptions = {
           </div>
           Аналітика
         </h1>
-        <p class="text-gray-500 font-medium mt-2 text-lg">Огляд витрат та доходів за категоріями</p>
+        <p class="text-gray-500 font-medium mt-2 text-lg">Управління бюджетами та розширені звіти</p>
       </div>
     </header>
 
-    <!-- Filters Bar Sync with Transactions -->
-    <TransactionFilters 
-      v-model:filters="store.filters"
-      @reset="resetFilters"
-    />
+    <!-- Tabs Navigation -->
+    <div class="flex flex-wrap gap-2 mb-8 bg-gray-100/50 p-2 rounded-[2rem] max-w-fit">
+      <button 
+        v-for="tab in [{id: 'overview', label: 'Огляд'}, {id: 'transactions', label: 'Транзакції'}, {id: 'budgets', label: 'Бюджети'}, {id: 'reports', label: 'Аналіз поведінки'}]" 
+        :key="tab.id"
+        @click="activeTab = tab.id"
+        class="px-6 py-3 rounded-3xl font-bold transition-all duration-300 outline-none"
+        :class="activeTab === tab.id ? 'bg-white text-blue-600 shadow-md transform scale-105' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- Обгортка для вкладки Огляд -->
+    <div v-show="activeTab === 'overview'">
+      <!-- Filters Bar Sync with Transactions -->
+      <TransactionFilters 
+        v-model:filters="store.filters"
+        @reset="resetFilters"
+      />
 
     <div v-if="store.isLoading" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-gray-200/50 border border-gray-50 aspect-square flex flex-col items-center">
@@ -518,6 +670,129 @@ const categoryAreaOptions = {
         </div>
       </div>
     </div>
+    </div> <!-- Закінчення activeTab === 'overview' -->
+
+    <!-- Вкладка Транзакції -->
+    <div v-if="activeTab === 'transactions'" class="animate-fade-in space-y-6">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 class="text-2xl font-black text-gray-800 tracking-tight">Історія транзакцій</h2>
+        <button 
+          @click="openCreateModal"
+          class="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-blue-200 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+        >
+          <Plus :size="20" stroke-width="3" />
+          Додати запис
+        </button>
+      </div>
+
+      <TransactionFilters 
+        v-model:filters="store.filters"
+        @reset="resetFilters"
+      />
+
+      <TransactionList 
+        :transactions="store.transactions"
+        :isLoading="store.isLoading"
+        :getCategoryName="store.getCategoryName"
+        @open-details="openTransactionDetails"
+      />
+    </div>
+
+    <!-- Вкладка Бюджети -->
+    <div v-if="activeTab === 'budgets'" class="animate-fade-in">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <h2 class="text-2xl font-black text-gray-800 tracking-tight">Ліміти витрат</h2>
+        <button @click="openBudgetForm()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-blue-200">+ Новий Бюджет</button>
+      </div>
+      
+      <div v-if="budgetStore.isLoading" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <SkeletonLoader height="150px" borderRadius="1.5rem" />
+        <SkeletonLoader height="150px" borderRadius="1.5rem" />
+      </div>
+      <div v-else-if="budgetStore.budgetProgress.length === 0" class="bg-white p-12 rounded-[2.5rem] border border-gray-100 text-center shadow-xl shadow-gray-200/40">
+        <div class="w-16 h-16 bg-blue-50 text-blue-500 rounded-full mx-auto flex items-center justify-center mb-4"><PieChart size="32" stroke-width="2.5" /></div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">Немає активних бюджетів</h3>
+        <p class="text-gray-500">Створіть свій перший ліміт, щоб контролювати витрати.</p>
+      </div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <BudgetCard 
+          v-for="budget in budgetStore.budgetProgress" 
+          :key="budget.id" 
+          :budget="budget" 
+          :categoryName="budget.category_id ? store.getCategoryName(budget.category_id) : 'Загальний бюджет'"
+          @edit="openBudgetForm"
+          @delete="deleteBudget"
+        />
+      </div>
+    </div>
+
+    <!-- Вкладка Звіти та поведінка -->
+    <div v-if="activeTab === 'reports'" class="animate-fade-in flex flex-col gap-8">
+      <div class="flex justify-between items-center mb-6">
+         <h2 class="text-2xl font-black text-gray-800 tracking-tight">Розширена Аналітика</h2>
+         <select @change="budgetStore.fetchAnalyticsReports($event.target.value)" class="px-4 py-2 bg-white border-2 border-gray-100 rounded-xl font-bold outline-none appearance-none cursor-pointer">
+            <option value="monthly">Цього місяця</option>
+            <option value="weekly">Цього тижня</option>
+            <option value="yearly">Цього року</option>
+         </select>
+      </div>
+
+      <div v-if="budgetStore.reports" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-6 rounded-[2rem] border border-green-100 shadow-xl shadow-green-100/30">
+          <p class="text-sm font-bold text-green-500 uppercase tracking-wider mb-2">Загальний дохід</p>
+          <span class="text-3xl font-black text-gray-900">{{ Number(budgetStore.reports.total_income).toLocaleString('uk-UA') }} ₴</span>
+        </div>
+        <div class="bg-white p-6 rounded-[2rem] border border-red-100 shadow-xl shadow-red-100/30">
+          <p class="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Загальні витрати</p>
+          <span class="text-3xl font-black text-gray-900">{{ Number(budgetStore.reports.total_expenses).toLocaleString('uk-UA') }} ₴</span>
+        </div>
+        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-[2rem] shadow-xl shadow-indigo-200/50 text-white leading-tight">
+          <p class="text-sm font-bold text-indigo-100 uppercase tracking-wider mb-2">Прогноз витрат<br/><span class="text-xs opacity-70">(до кінця періоду)</span></p>
+          <span class="text-3xl font-black">{{ Number(budgetStore.reports.forecast_expenses).toLocaleString('uk-UA') }} ₴</span>
+        </div>
+      </div>
+
+      <!-- Tips Section -->
+      <div v-if="budgetStore.reports && budgetStore.reports.tips.length > 0" class="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl shadow-amber-100/20 border border-amber-50 flex flex-col gap-4">
+        <h3 class="text-xl font-black text-gray-800 flex items-center gap-3"><span class="w-10 h-10 bg-amber-100 flex items-center justify-center rounded-xl text-amber-500"><PieChart size="20" stroke-width="2.5"/></span> Аналіз поведінки</h3>
+        <div v-for="(tip, idx) in budgetStore.reports.tips" :key="idx" class="p-5 bg-amber-50 text-amber-900 rounded-[1.5rem] font-medium border border-amber-100 leading-relaxed shadow-sm">
+          {{ tip }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <BudgetForm v-if="isBudgetFormOpen" :budgetToEdit="budgetToEdit" @close="closeBudgetForm" />
+
+    <TransactionFormModal 
+      :isOpen="isModalOpen"
+      :editingTxId="editingTxId"
+      v-model:form="form"
+      :fopSettings="fopSettings"
+      :isSubmitting="isSubmitting"
+      @close="isModalOpen = false"
+      @submit="submitTransaction"
+      @add-category="isCategoryModalOpen = true"
+    />
+
+    <CategoryModal 
+      v-if="isCategoryModalOpen"
+      :isOpen="isCategoryModalOpen"
+      :userId="userId"
+      :type="form.type"
+      @close="isCategoryModalOpen = false"
+      @saved="submitNewCategory"
+    />
+
+    <TransactionModal 
+      :isOpen="isDetailModalOpen"
+      :transaction="selectedTransaction"
+      :userId="userId"
+      :fopSettings="fopSettings"
+      @close="isDetailModalOpen = false; selectedTransaction = null"
+      @updated="handleTransactionUpdate"
+      @deleted="handleTransactionUpdate"
+    />
   </div>
 </template>
 

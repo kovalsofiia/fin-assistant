@@ -17,7 +17,9 @@ import StatCard from '@/components/dashboard/StatCard.vue';
 import TaxWidget from '@/components/dashboard/TaxWidget.vue';
 import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
-import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock, CreditCard, User } from 'lucide-vue-next';
+import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
+import CategoryModal from '@/components/common/CategoryModal.vue';
+import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock, CreditCard, User, Plus } from 'lucide-vue-next';
 
 const txStore = useTransactionStore();
 const router = useRouter();
@@ -32,6 +34,24 @@ const paymentCalendar = ref([]);
 // Transaction Details
 const isDetailModalOpen = ref(false);
 const selectedTransaction = ref(null);
+
+// Transaction creation
+const isModalOpen = ref(false);
+const isCategoryModalOpen = ref(false);
+const isSubmitting = ref(false);
+const editingTxId = ref(null);
+
+const initialFormState = {
+  type: 'expense',
+  amount: '',
+  date: new Date().toISOString().split('T')[0], 
+  category_id: '',
+  description: '',
+  currency: 'UAH',
+  manual_rate: '',
+  isZed: false
+};
+const form = ref({ ...initialFormState });
 
 const openTransactionDetails = (tx) => {
   selectedTransaction.value = tx;
@@ -48,6 +68,38 @@ const handleTransactionUpdate = async () => {
     await fetchTaxAnalysis();
   }
   isDetailModalOpen.value = false;
+};
+
+const openCreateModal = () => {
+  editingTxId.value = null; 
+  form.value = { ...initialFormState }; 
+  isModalOpen.value = true;
+};
+
+const submitTransaction = async () => {
+  if (form.value.amount <= 0) return;
+  isSubmitting.value = true;
+
+  try {
+    const payload = {
+      user_id: userId.value,
+      category_id: form.value.category_id,
+      type: form.value.type,
+      amount: parseFloat(form.value.amount),
+      date: form.value.date,
+      description: form.value.description,
+      currency: form.value.isZed ? form.value.currency : 'UAH',
+      manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null
+    };
+
+    await txStore.addTransaction(payload);
+    isModalOpen.value = false;
+    await handleTransactionUpdate();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
 // Фільтрація періоду
@@ -350,7 +402,7 @@ const getCategoryName = (id) => {
       <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div class="p-4 border-b flex justify-between items-center bg-gray-50">
           <h2 class="font-bold text-gray-700">Останні операції</h2>
-          <router-link to="/transactions" class="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors">
+          <router-link :to="{ path: '/analytics', query: { tab: 'transactions' } }" class="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors">
             Всі транзакції →
           </router-link>
         </div>
@@ -426,6 +478,38 @@ const getCategoryName = (id) => {
       @updated="handleTransactionUpdate"
       @deleted="handleTransactionUpdate"
     />
+
+    <!-- Transaction Form Modal -->
+    <TransactionFormModal 
+      :isOpen="isModalOpen"
+      :editingTxId="editingTxId"
+      v-model:form="form"
+      :fopSettings="settings"
+      :isSubmitting="isSubmitting"
+      @close="isModalOpen = false"
+      @submit="submitTransaction"
+      @add-category="isCategoryModalOpen = true"
+    />
+
+    <CategoryModal 
+      v-if="isCategoryModalOpen"
+      :isOpen="isCategoryModalOpen"
+      :userId="userId"
+      :type="form.type"
+      @close="isCategoryModalOpen = false"
+      @saved="isCategoryModalOpen = false"
+    />
+
+    <!-- Floating Action Button: Add Transaction -->
+    <button 
+      @click="openCreateModal"
+      class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50 bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-2xl shadow-blue-300 flex items-center justify-center gap-3 hover:scale-110 active:scale-95 group w-16 h-16 md:w-auto md:h-auto md:py-4 md:px-8 rounded-full md:rounded-2xl"
+    >
+      <div class="flex items-center justify-center group-hover:rotate-90 transition-transform duration-300">
+        <Plus :size="24" stroke-width="3" />
+      </div>
+      <span class="hidden md:inline text-lg">Додати запис</span>
+    </button>
   </div>
 </template>
 
