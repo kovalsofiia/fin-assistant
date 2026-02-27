@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/services/api'; 
 import { supabase } from '@/services/supabase';
+import { useTaxRulesStore } from '@/stores/taxRulesStore';
+import { APP_CONSTANTS } from '@/constants/appConstants';
 import { KVED_SECTIONS } from '@/constants/kveds';
 import { 
   ArrowLeft, 
@@ -16,6 +18,7 @@ import {
 } from 'lucide-vue-next';
 
 const router = useRouter();
+const taxRulesStore = useTaxRulesStore();
 const isLoading = ref(false);
 const step = ref(1);
 const totalSteps = 5;
@@ -40,13 +43,16 @@ const formData = ref({
 const kvedSearch = ref('');
 const openSections = ref({});
 
-// Ліміти груп на 2025 рік
-const GROUP_LIMITS = {
-  1: 1336000,
-  2: 5920000,
-  3: 9336000,
-  4: Infinity
-};
+// Ліміти груп (будуть заповнені з стору)
+const GROUP_LIMITS = computed(() => {
+  const rules = taxRulesStore.currentRules || {};
+  return {
+    1: rules.limit_g1 || APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G1,
+    2: rules.limit_g2 || APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G2,
+    3: rules.limit_g3 || APP_CONSTANTS.TAX_DEFAULTS.LIMIT_G3,
+    4: Infinity
+  };
+});
 
 const EMPLOYEE_LIMITS = {
   1: 0,
@@ -59,7 +65,7 @@ const incomeError = computed(() => {
   const income = parseFloat(formData.value.yearlyIncome);
   if (isNaN(income)) return null;
   if (income < 0) return "Дохід не може бути від'ємним";
-  const limit = GROUP_LIMITS[formData.value.fopGroup];
+  const limit = GROUP_LIMITS.value[formData.value.fopGroup];
   if (income > limit) {
     return `Дохід перевищує ліміт для ${formData.value.fopGroup}-ї групи (${limit.toLocaleString()} ₴)`;
   }
@@ -135,6 +141,10 @@ const finishOnboarding = async () => {
 
     // 2. Якщо користувач ФОП, зберігаємо податкові налаштування та КВЕДи
     if (formData.value.isFop) {
+      const year = new Date().getFullYear();
+      const month = new Date().getMonth() + 1;
+      const rules = await taxRulesStore.fetchRules(year, month);
+      
       const settingsData = {
         tax_system: formData.value.taxSystem,
         fop_group: parseInt(formData.value.fopGroup),
@@ -145,10 +155,10 @@ const finishOnboarding = async () => {
         land_area_ha: parseFloat(formData.value.landArea || 0),
         normative_land_value: parseFloat(formData.value.landValue || 0),
         reporting_period: formData.value.reportingPeriod,
-        income_tax_percent: formData.value.fopGroup == 3 ? (formData.value.isVatPayer ? 3 : 5) : 0,
-        military_tax_percent: formData.value.fopGroup == 3 ? 1 : 1.5, // 1% group 3, else fixed logic handled by service
-        esv_value: 1760.0,
-        is_zed: formData.value.selectedKveds.some(k => k.code.startsWith('62') || k.code.startsWith('63')) // Simplified ZED detection or manual
+        income_tax_percent: formData.value.fopGroup == 3 ? (formData.value.isVatPayer ? APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3_VAT : (rules.income_tax_percent || APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3)) : 0,
+        military_tax_percent: formData.value.fopGroup == 3 ? (rules.military_tax_percent || APP_CONSTANTS.TAX_DEFAULTS.MILITARY_TAX_PERCENT) : (rules.fixed_military_tax || APP_CONSTANTS.TAX_DEFAULTS.FIXED_MILITARY_TAX),
+        esv_value: rules.esv_value || APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE,
+        is_zed: formData.value.selectedKveds.some(k => k.code.startsWith('62') || k.code.startsWith('63'))
       };
       await api.patch(`/settings/${user.id}`, settingsData);
 

@@ -5,6 +5,7 @@ import api from '@/services/api';
 import { supabase } from '@/services/supabase';
 import { Save, Loader2 } from 'lucide-vue-next';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
+import { APP_CONSTANTS } from '@/constants/appConstants';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 
@@ -33,9 +34,9 @@ const profile = ref({
 const fopSettings = ref({
   fop_group: 3,
   is_zed: false,
-  income_tax_percent: 5,
-  esv_value: 1760,
-  military_tax_percent: 1,
+  income_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3,
+  esv_value: APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE,
+  military_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.MILITARY_TAX_PERCENT,
   tax_system: 'simplified',
   activity_type: 'services',
   has_employees: false,
@@ -44,7 +45,8 @@ const fopSettings = ref({
   land_area_ha: 0,
   normative_land_value: 0,
   single_tax_value: 0,
-  military_tax_value: 0
+  military_tax_value: 0,
+  registration_date: ''
 });
 
 const userKveds = ref([]);
@@ -86,7 +88,8 @@ const loadData = async () => {
             employees_count: settingsRes.data.employees_count || 0,
             is_vat_payer: settingsRes.data.is_vat_payer || false,
             land_area_ha: settingsRes.data.land_area_ha || 0,
-            normative_land_value: settingsRes.data.normative_land_value || 0
+            normative_land_value: settingsRes.data.normative_land_value || 0,
+            registration_date: settingsRes.data.registration_date || ''
           };
           
           const group = parseInt(fopSettings.value.fop_group);
@@ -158,7 +161,8 @@ const saveChanges = async () => {
         employees_count: fopSettings.value.employees_count,
         is_vat_payer: fopSettings.value.is_vat_payer,
         land_area_ha: fopSettings.value.land_area_ha,
-        normative_land_value: fopSettings.value.normative_land_value
+        normative_land_value: fopSettings.value.normative_land_value,
+        registration_date: fopSettings.value.registration_date || null
       });
     }
 
