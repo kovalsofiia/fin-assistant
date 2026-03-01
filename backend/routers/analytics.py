@@ -206,8 +206,11 @@ def sync_tax_month(user_id: str, year: int, month: int):
 def sync_all_taxes(user_id: str):
     """
     Знаходить усі місяці, в яких були транзакції, та синхронізує їх в історію податків.
+    Оптимізовано (Smart Sync): перераховує лише за зміни даних або для поточного місяця.
     """
     try:
+        today = datetime.now().date()
+        
         # 1. Отримуємо налаштування ФОП
         settings_res = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
         if not settings_res.data:
@@ -215,65 +218,60 @@ def sync_all_taxes(user_id: str):
         
         settings = FopSettingsBase(**settings_res.data[0])
         
-        # 2. Знаходимо унікальні місяці та роки з транзакцій
+        # 2. Отримуємо всі існуючі записи про податки (для порівняння)
+        existing_records_res = supabase.table("tax_records").select("*").eq("user_id", user_id).execute()
+        existing_map = {(r["year"], r["month"]): r for r in existing_records_res.data}
+        
+        # 3. Отримуємо всі доходи для розрахунку поточних сум по місяцях
         tx_res = supabase.table("transactions")\
-            .select("transaction_date")\
+            .select("transaction_amount, transaction_date")\
             .eq("user_id", user_id)\
+            .eq("transaction_type", "income")\
+            .eq("is_fop", True)\
             .execute()
         
         if not tx_res.data:
             return {"message": "Транзакцій не знайдено", "synced_count": 0}
             
-        active_periods = set()
+        income_by_period = {}
         for tx in tx_res.data:
             dt = datetime.fromisoformat(tx["transaction_date"])
-            active_periods.add((dt.year, dt.month))
+            period = (dt.year, dt.month)
+            income_by_period[period] = income_by_period.get(period, 0) + float(tx["transaction_amount"])
             
         synced_count = 0
+        skipped_count = 0
         results = []
         
-        # 3. Для кожного періоду запускаємо синхронізацію
-        for year, month in sorted(list(active_periods)):
-            # Розраховуємо дохід ФОП за цей місяць
-            start_date = date_type(year, month, 1).isoformat()
-            last_day = calendar.monthrange(year, month)[1]
-            end_date = date_type(year, month, last_day).isoformat()
+        # 4. Проходимо по кожному періоду, де є дохід
+        for (year, month), current_fop_income in sorted(income_by_period.items()):
+            existing = existing_map.get((year, month))
+            is_current_month = (year == today.year and month == today.month)
             
-            month_tx_res = supabase.table("transactions")\
-                .select("transaction_amount")\
-                .eq("user_id", user_id)\
-                .eq("transaction_type", "income")\
-                .eq("is_fop", True)\
-                .gte("transaction_date", start_date)\
-                .lte("transaction_date", end_date)\
-                .execute()
+            # Smart Sync Check:
+            # Якщо запис є, він не за поточний місяць і сума доходу не змінилася — пропускаємо перерахунок
+            if existing and not is_current_month:
+                stored_income = float(existing.get("fop_income", 0))
+                if abs(stored_income - current_fop_income) < 0.01:
+                    skipped_count += 1
+                    continue
             
-            fop_income = sum(float(tx["transaction_amount"]) for tx in month_tx_res.data)
-            
-            # Розраховуємо податки
+            # Розраховуємо податки через TaxService
             calc_date = date_type(year, month, 1)
-            taxes = TaxService.calculate_taxes(user_id, settings, fop_income, ReportingPeriod.MONTH, calc_date)
+            taxes = TaxService.calculate_taxes(user_id, settings, current_fop_income, ReportingPeriod.MONTH, calc_date)
             
             record_data = {
                 "user_id": user_id,
                 "year": year,
                 "month": month,
-                "fop_income": round(fop_income, 2),
+                "fop_income": round(current_fop_income, 2),
                 "esv": taxes["esv"],
                 "income_tax": taxes["single_tax"],
                 "military_tax": taxes["military_tax"]
             }
             
-            # Upsert
-            existing = supabase.table("tax_records")\
-                .select("id")\
-                .eq("user_id", user_id)\
-                .eq("year", year)\
-                .eq("month", month)\
-                .execute()
-                
-            if existing.data:
-                res = supabase.table("tax_records").update(record_data).eq("id", existing.data[0]["id"]).execute()
+            if existing:
+                res = supabase.table("tax_records").update(record_data).eq("id", existing["id"]).execute()
             else:
                 res = supabase.table("tax_records").insert(record_data).execute()
             
@@ -282,8 +280,9 @@ def sync_all_taxes(user_id: str):
                 results.append(res.data[0])
                 
         return {
-            "message": f"Синхронізовано {synced_count} періодів",
+            "message": f"Синхронізовано: {synced_count}, Пропущено (без змін): {skipped_count}",
             "synced_count": synced_count,
+            "skipped_count": skipped_count,
             "records": results
         }
         
