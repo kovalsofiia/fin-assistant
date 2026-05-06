@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from core.database import supabase
+from core.auth import get_current_user_id
 from models.setting import FopSettingsUpdate
 from models.common import FopGroup, TaxSystem, ActivityType, ReportingPeriod
 from core.constants import DEFAULT_G3_RATE, DEFAULT_MILITARY_RATE, MIN_ESV
@@ -8,11 +9,13 @@ from core.constants import DEFAULT_G3_RATE, DEFAULT_MILITARY_RATE, MIN_ESV
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 @router.get("/{user_id}")
-def get_fop_settings(user_id: str):
+def get_fop_settings(user_id: str, current_user_id: str = Depends(get_current_user_id)):
     """
     Отримати податкові налаштування користувача (група, ставки, ЗЕД).
     """
     try:
+        if user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Доступ заборонено")
         response = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
         
         if not response.data:
@@ -41,6 +44,8 @@ def get_fop_settings(user_id: str):
             
         return response.data[0]
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         print(f"Error getting settings for {user_id}: {e}")
         # Return sensible defaults if the query fails (likely due to schema mismatch)
         return {
@@ -56,11 +61,17 @@ def get_fop_settings(user_id: str):
         }
 
 @router.patch("/{user_id}")
-def update_fop_settings(user_id: str, settings: FopSettingsUpdate):
+def update_fop_settings(
+    user_id: str,
+    settings: FopSettingsUpdate,
+    current_user_id: str = Depends(get_current_user_id),
+):
     """
     Оновити налаштування з високою стійкістю до помилок схеми.
     """
     try:
+        if user_id != current_user_id:
+            raise HTTPException(status_code=403, detail="Доступ заборонено")
         update_data = jsonable_encoder(settings.dict(exclude_unset=True))
         if not update_data:
             raise HTTPException(status_code=400, detail="Немає даних для оновлення")
@@ -91,5 +102,7 @@ def update_fop_settings(user_id: str, settings: FopSettingsUpdate):
             raise db_error
             
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         print(f"Settings Update Error for {user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Помилка оновлення: {str(e)}")

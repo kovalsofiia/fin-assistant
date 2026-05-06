@@ -79,7 +79,7 @@ export const useTransactionStore = defineStore('transactions', {
           localStorage.setItem('transaction_filters', JSON.stringify(this.filters));
         }
 
-        const txRes = await api.getTransactions(user.id, params);
+        const txRes = await api.getTransactions(params);
         this.transactions = txRes.data;
 
         // Перераховуємо суми (тільки для відображених транзакцій)
@@ -101,7 +101,7 @@ export const useTransactionStore = defineStore('transactions', {
         const effectiveEndDate = endDateOverride || this.filters.endDate;
         if (effectiveEndDate) params.end_date = effectiveEndDate;
 
-        const summaryRes = await api.getTransactionSummary(user.id, params);
+        const summaryRes = await api.getTransactionSummary(params);
         this.lifetimeSummary = summaryRes.data;
       } catch (e) {
         console.error("Error fetching lifetime summary:", e);
@@ -111,7 +111,7 @@ export const useTransactionStore = defineStore('transactions', {
     async fetchCategories() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const catRes = await api.getCategories(user.id);
+      const catRes = await api.getCategories();
       this.categories = catRes.data;
     },
 
@@ -149,13 +149,13 @@ export const useTransactionStore = defineStore('transactions', {
       await this.fetchTransactions();
     },
 
-    async editTransaction(txId, userId, patchData) {
-      await api.patchTransaction(txId, userId, patchData);
+    async editTransaction(txId, _userId, patchData) {
+      await api.patchTransaction(txId, patchData);
       await this.fetchTransactions();
     },
 
-    async deleteTransaction(txId, userId) {
-      await api.deleteTransaction(txId, userId);
+    async deleteTransaction(txId, _userId) {
+      await api.deleteTransaction(txId);
       // Видаляємо локально, щоб не робити зайвий запит
       this.transactions = this.transactions.filter(t => t.transaction_id !== txId);
       this.calculateSummary();
@@ -168,12 +168,12 @@ export const useTransactionStore = defineStore('transactions', {
     },
 
     async modifyCategory(catId, userId, updateData) {
-      await api.updateCategory(catId, userId, updateData);
+      await api.updateCategory(catId, updateData);
       await this.fetchCategories();
     },
 
     async removeCategory(catId, userId) {
-      await api.deleteCategory(catId, userId);
+      await api.deleteCategory(catId);
       await this.fetchCategories();
     }
   }

@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
 import api from '@/services/api';
-import { supabase } from '@/services/supabase';
 
 export const useBudgetStore = defineStore('budgets', {
     state: () => ({
@@ -16,9 +15,7 @@ export const useBudgetStore = defineStore('budgets', {
         async fetchBudgets() {
             this.isLoading = true;
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                const res = await api.getBudgets(user.id);
+                const res = await api.getBudgets();
                 this.budgets = res.data;
             } catch (e) {
                 console.error("Error fetching budgets:", e);
@@ -31,9 +28,7 @@ export const useBudgetStore = defineStore('budgets', {
         async fetchBudgetProgress() {
             this.isLoading = true;
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                const res = await api.getBudgetsProgress(user.id);
+                const res = await api.getBudgetsProgress();
                 this.budgetProgress = res.data;
             } catch (e) {
                 console.error("Error fetching budget progress:", e);
@@ -48,22 +43,20 @@ export const useBudgetStore = defineStore('budgets', {
             await this.fetchBudgetProgress();
         },
 
-        async updateBudget(budgetId, userId, patchData) {
-            await api.patchBudget(budgetId, userId, patchData);
+        async updateBudget(budgetId, _userId, patchData) {
+            await api.patchBudget(budgetId, patchData);
             await this.fetchBudgetProgress();
         },
 
-        async deleteBudget(budgetId, userId) {
-            await api.deleteBudget(budgetId, userId);
+        async deleteBudget(budgetId, _userId) {
+            await api.deleteBudget(budgetId);
             await this.fetchBudgetProgress();
         },
 
         async fetchAnalyticsReports(period = 'monthly', startDate = null, endDate = null) {
             this.isLoading = true;
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                const res = await api.getAnalyticsReports(user.id, period, startDate, endDate);
+                const res = await api.getAnalyticsReports(period, startDate, endDate);
                 this.reports = res.data;
             } catch (e) {
                 console.error("Error fetching reports:", e);
@@ -76,9 +69,7 @@ export const useBudgetStore = defineStore('budgets', {
         async fetchTaxHistory() {
             this.isLoading = true;
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                const res = await api.getTaxHistory(user.id);
+                const res = await api.getTaxHistory();
                 this.taxHistory = res.data;
             } catch (e) {
                 console.error("Error fetching tax history:", e);
@@ -90,9 +81,7 @@ export const useBudgetStore = defineStore('budgets', {
 
         async syncTaxMonth(year, month) {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                await api.syncTaxMonth(user.id, year, month);
+                await api.syncTaxMonth(year, month);
                 await this.fetchTaxHistory();
             } catch (e) {
                 console.error("Error syncing tax month:", e);
@@ -102,9 +91,7 @@ export const useBudgetStore = defineStore('budgets', {
 
         async syncAllTaxes() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                await api.syncAllTaxes(user.id);
+                await api.syncAllTaxes();
                 await this.fetchTaxHistory();
             } catch (e) {
                 console.error("Error syncing all taxes:", e);

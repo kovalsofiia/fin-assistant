@@ -1,16 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from datetime import date as date_type
 from typing import Optional
 from services.tax_service import TaxService
 from models.setting import FopSettingsBase
 from models.common import ReportingPeriod
 from core.database import supabase
+from core.auth import get_current_user_id
 
 router = APIRouter(prefix="/tax", tags=["Tax"])
 
 @router.get("/calculate")
 def calculate_tax(
-    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
     annual_income: float = 0.0,
     monthly_income: float = 0.0,
     period: ReportingPeriod = ReportingPeriod.MONTH,
@@ -21,7 +22,7 @@ def calculate_tax(
     """
     try:
         # 1. Отримуємо налаштування ФОП
-        settings_res = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
+        settings_res = supabase.table("fop_settings").select("*").eq("user_id", current_user_id).execute()
         if not settings_res.data:
             raise HTTPException(status_code=404, detail="Налаштування ФОП не знайдено")
         
@@ -39,7 +40,7 @@ def calculate_tax(
         # 4. Рахуємо податки
         # Для розрахунку використовуємо або місячний дохід, або річний розділений на місяці
         income_for_calc = monthly_income
-        taxes = TaxService.calculate_taxes(user_id, settings, income_for_calc, period, calc_date)
+        taxes = TaxService.calculate_taxes(current_user_id, settings, income_for_calc, period, calc_date)
         
         # 5. Календар
         calendar = TaxService.get_payment_calendar()

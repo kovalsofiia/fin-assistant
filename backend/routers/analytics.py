@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from core.database import supabase
+from core.auth import get_current_user_id
 from typing import Optional
 from datetime import date as date_type, datetime, timedelta
 import calendar
@@ -10,13 +11,18 @@ from models.common import ReportingPeriod
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 @router.get("/reports")
-def get_reports(user_id: str, period: str = "monthly", start_date: Optional[str] = None, end_date: Optional[str] = None):
+def get_reports(
+    period: str = "monthly",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user_id: str = Depends(get_current_user_id),
+):
     """
     Повертає загальні витрати та доходи згруповані за категоріями для вибраного періоду,
     а також підказки та прогнози поведінки.
     """
     try:
-        query = supabase.table("transactions").select("transaction_amount, transaction_type, category_id, transaction_date, is_fop").eq("user_id", user_id)
+        query = supabase.table("transactions").select("transaction_amount, transaction_type, category_id, transaction_date, is_fop").eq("user_id", current_user_id)
         
         today = datetime.now().date()
         
@@ -120,28 +126,28 @@ def get_reports(user_id: str, period: str = "monthly", start_date: Optional[str]
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/history/taxes")
-def get_tax_history(user_id: str):
+def get_tax_history(current_user_id: str = Depends(get_current_user_id)):
     """
     Отримує збережену історію податків.
     """
     try:
-        res = supabase.table("tax_records").select("*").eq("user_id", user_id).order("year", desc=True).order("month", desc=True).execute()
+        res = supabase.table("tax_records").select("*").eq("user_id", current_user_id).order("year", desc=True).order("month", desc=True).execute()
         return res.data
     except Exception as e:
-        print(f"Error fetching tax history for {user_id}: {e}")
+        print(f"Error fetching tax history for {current_user_id}: {e}")
         # If table doesn't exist, return empty list instead of 500
         if "relation \"tax_records\" does not exist" in str(e).lower():
             return []
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.post("/history/taxes/sync")
-def sync_tax_month(user_id: str, year: int, month: int):
+def sync_tax_month(year: int, month: int, current_user_id: str = Depends(get_current_user_id)):
     """
     Розраховує та зберігає показники податків за конкретний місяць.
     """
     try:
         # 1. Отримуємо налаштування ФОП
-        settings_res = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
+        settings_res = supabase.table("fop_settings").select("*").eq("user_id", current_user_id).execute()
         if not settings_res.data:
             raise HTTPException(status_code=404, detail="Налаштування ФОП не знайдено")
         
@@ -154,7 +160,7 @@ def sync_tax_month(user_id: str, year: int, month: int):
         
         tx_res = supabase.table("transactions")\
             .select("transaction_amount")\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .eq("transaction_type", "income")\
             .eq("is_fop", True)\
             .gte("transaction_date", start_date)\
@@ -165,11 +171,11 @@ def sync_tax_month(user_id: str, year: int, month: int):
         
         # 3. Розраховуємо податки через TaxService
         calc_date = date_type(year, month, 1) # Базова дата місяця
-        taxes = TaxService.calculate_taxes(user_id, settings, fop_income, ReportingPeriod.MONTH, calc_date)
+        taxes = TaxService.calculate_taxes(current_user_id, settings, fop_income, ReportingPeriod.MONTH, calc_date)
         
         # 4. Зберігаємо/Оновлюємо запис
         record_data = {
-            "user_id": user_id,
+            "user_id": current_user_id,
             "year": year,
             "month": month,
             "fop_income": round(fop_income, 2),
@@ -181,7 +187,7 @@ def sync_tax_month(user_id: str, year: int, month: int):
         # Перевіряємо чи вже є запис
         existing = supabase.table("tax_records")\
             .select("id")\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .eq("year", year)\
             .eq("month", month)\
             .execute()
@@ -194,7 +200,7 @@ def sync_tax_month(user_id: str, year: int, month: int):
         return res.data[0]
         
     except Exception as e:
-        print(f"Error syncing tax month for {user_id}: {e}")
+        print(f"Error syncing tax month for {current_user_id}: {e}")
         if "relation \"tax_records\" does not exist" in str(e).lower():
             raise HTTPException(status_code=400, detail="Таблиця 'tax_records' відсутня. Будь ласка, виконайте SQL міграцію.")
         if "column \"registration_date\" does not exist" in str(e).lower():
@@ -203,7 +209,7 @@ def sync_tax_month(user_id: str, year: int, month: int):
              pass
         raise HTTPException(status_code=500, detail=f"Помилка синхронізації: {str(e)}")
 @router.post("/history/taxes/sync_all")
-def sync_all_taxes(user_id: str):
+def sync_all_taxes(current_user_id: str = Depends(get_current_user_id)):
     """
     Знаходить усі місяці, в яких були транзакції, та синхронізує їх в історію податків.
     Оптимізовано (Smart Sync): перераховує лише за зміни даних або для поточного місяця.
@@ -212,20 +218,20 @@ def sync_all_taxes(user_id: str):
         today = datetime.now().date()
         
         # 1. Отримуємо налаштування ФОП
-        settings_res = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
+        settings_res = supabase.table("fop_settings").select("*").eq("user_id", current_user_id).execute()
         if not settings_res.data:
             raise HTTPException(status_code=404, detail="Налаштування ФОП не знайдено")
         
         settings = FopSettingsBase(**settings_res.data[0])
         
         # 2. Отримуємо всі існуючі записи про податки (для порівняння)
-        existing_records_res = supabase.table("tax_records").select("*").eq("user_id", user_id).execute()
+        existing_records_res = supabase.table("tax_records").select("*").eq("user_id", current_user_id).execute()
         existing_map = {(r["year"], r["month"]): r for r in existing_records_res.data}
         
         # 3. Отримуємо всі доходи для розрахунку поточних сум по місяцях
         tx_res = supabase.table("transactions")\
             .select("transaction_amount, transaction_date")\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .eq("transaction_type", "income")\
             .eq("is_fop", True)\
             .execute()
@@ -258,10 +264,10 @@ def sync_all_taxes(user_id: str):
             
             # Розраховуємо податки через TaxService
             calc_date = date_type(year, month, 1)
-            taxes = TaxService.calculate_taxes(user_id, settings, current_fop_income, ReportingPeriod.MONTH, calc_date)
+            taxes = TaxService.calculate_taxes(current_user_id, settings, current_fop_income, ReportingPeriod.MONTH, calc_date)
             
             record_data = {
-                "user_id": user_id,
+                "user_id": current_user_id,
                 "year": year,
                 "month": month,
                 "fop_income": round(current_fop_income, 2),
@@ -287,5 +293,5 @@ def sync_all_taxes(user_id: str):
         }
         
     except Exception as e:
-        print(f"Error syncing all taxes for {user_id}: {e}")
+        print(f"Error syncing all taxes for {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

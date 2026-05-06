@@ -108,7 +108,6 @@ const fetchTaxAnalysis = async () => {
   try {
     const res = await api.get(`/tax/calculate`, {
       params: {
-        user_id: userId.value,
         annual_income: txStore.lifetimeSummary.totalFopIncome || 0,
         monthly_income: txStore.summary.totalFopIncome || 0,
         period: selectedPeriodType.value === 'month' ? 'month' : 'quarter',

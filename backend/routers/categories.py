@@ -1,33 +1,28 @@
-from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from core.database import supabase
+from core.auth import get_current_user_id
 from models.category import CategoryCreate
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
 @router.get("/")
-def get_categories(user_id: Optional[str] = None):
+def get_categories(current_user_id: str = Depends(get_current_user_id)):
     """
     Отримує список категорій.
     Адаптується під тип користувача (ФОП чи ні).
     """
     try:
         # 1. Визначаємо статус користувача (ФОП чи ні?)
-        user_is_fop = True # За замовчуванням (якщо user_id не передали або сталася помилка)
-        
-        if user_id:
-            profile_response = supabase.table("profiles").select("is_fop").eq("id", user_id).execute()
-            if profile_response.data:
-                user_is_fop = profile_response.data[0]['is_fop']
+        user_is_fop = True
+        profile_response = supabase.table("profiles").select("is_fop").eq("id", current_user_id).execute()
+        if profile_response.data:
+            user_is_fop = profile_response.data[0]['is_fop']
 
         # 2. Будуємо запит на категорії
         query = supabase.table("categories").select("*")
         
         # Фільтр по власнику (Системні + Свої)
-        if user_id:
-            query = query.or_(f"user_id.is.null,user_id.eq.{user_id}")
-        else:
-            query = query.is_("user_id", "null")
+        query = query.or_(f"user_id.is.null,user_id.eq.{current_user_id}")
             
         # 3. Фільтр "ФОП / Не ФОП"
         # Якщо користувач НЕ ФОП -> показуємо тільки ті, де is_fop_only = FALSE
@@ -64,13 +59,13 @@ def get_categories(user_id: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/")
-def create_category(cat: CategoryCreate):
+def create_category(cat: CategoryCreate, current_user_id: str = Depends(get_current_user_id)):
     """Створити нову категорію користувача"""
     try:
         data = {
             "name": cat.name,
             "type": cat.type,
-            "user_id": cat.user_id,
+            "user_id": current_user_id,
             "is_fop_only": cat.is_fop_only
         }
         response = supabase.table("categories").insert(data).execute()
@@ -79,13 +74,13 @@ def create_category(cat: CategoryCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{category_id}")
-def delete_category(category_id: str, user_id: str):
+def delete_category(category_id: str, current_user_id: str = Depends(get_current_user_id)):
     """Видалити власну категорію та перенести транзакції в 'None'"""
     try:
         # 1. Отримуємо категорію, яку хочемо видалити
         cat_res = supabase.table("categories").select("*") \
             .eq("id", category_id) \
-            .eq("user_id", user_id) \
+            .eq("user_id", current_user_id) \
             .execute()
         
         if not cat_res.data:
@@ -100,7 +95,7 @@ def delete_category(category_id: str, user_id: str):
 
         # 2. Шукаємо або створюємо категорію 'None' для цього користувача та типу
         none_res = supabase.table("categories").select("*") \
-            .eq("user_id", user_id) \
+            .eq("user_id", current_user_id) \
             .eq("type", cat_type) \
             .eq("name", "None") \
             .execute()
@@ -112,7 +107,7 @@ def delete_category(category_id: str, user_id: str):
             new_none = supabase.table("categories").insert({
                 "name": "None",
                 "type": cat_type,
-                "user_id": user_id
+                "user_id": current_user_id
             }).execute()
             if not new_none.data:
                 raise HTTPException(status_code=500, detail="Не вдалося створити категорію 'None'")
@@ -121,13 +116,13 @@ def delete_category(category_id: str, user_id: str):
         # 3. Переприв'язуємо транзакції
         supabase.table("transactions").update({"category_id": none_id}) \
             .eq("category_id", category_id) \
-            .eq("user_id", user_id) \
+            .eq("user_id", current_user_id) \
             .execute()
 
         # 4. Видаляємо стару категорію
         response = supabase.table("categories").delete() \
             .eq("id", category_id) \
-            .eq("user_id", user_id) \
+            .eq("user_id", current_user_id) \
             .execute()
             
         return {"message": "Категорію видалено, транзакції перенесено до 'None'"}
@@ -137,7 +132,7 @@ def delete_category(category_id: str, user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{category_id}")
-def update_category(category_id: str, user_id: str, payload: dict):
+def update_category(category_id: str, payload: dict, current_user_id: str = Depends(get_current_user_id)):
     """Оновити власну категорію або створити копію системної"""
     try:
         data_to_update = {}
@@ -161,18 +156,18 @@ def update_category(category_id: str, user_id: str, payload: dict):
             new_cat_data = {
                 "name": data_to_update.get("name", target_cat["name"]),
                 "type": target_cat["type"],
-                "user_id": user_id,
+                "user_id": current_user_id,
                 "is_fop_only": data_to_update.get("is_fop_only", target_cat.get("is_fop_only", True))
             }
             response = supabase.table("categories").insert(new_cat_data).execute()
         else:
             # 3. Якщо категорія вже належить користувачу - просто оновлюємо
-            if target_cat['user_id'] != user_id:
+            if target_cat['user_id'] != current_user_id:
                 raise HTTPException(status_code=403, detail="Ви не можете змінити категорію іншого користувача")
                 
             response = supabase.table("categories").update(data_to_update)\
                 .eq("id", category_id)\
-                .eq("user_id", user_id)\
+                .eq("user_id", current_user_id)\
                 .execute()
             
         if not response.data:

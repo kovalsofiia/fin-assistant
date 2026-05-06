@@ -1,6 +1,7 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from core.database import supabase
+from core.auth import get_current_user_id
 from services.nbu_service import get_nbu_rate
 from models.transaction import TransactionCreate, TransactionPatch
 from datetime import date as date_type
@@ -8,7 +9,7 @@ from datetime import date as date_type
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 @router.post("/")
-def create_transaction(tx: TransactionCreate):
+def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get_current_user_id)):
     """
     Створює транзакцію. Тягне курс НБУ, якщо не заданий вручну.
     """
@@ -30,7 +31,7 @@ def create_transaction(tx: TransactionCreate):
     # Підготовка даних для Supabase
     # Важливо: назви полів мають співпадати з базою даних!
     data_to_insert = {
-        "user_id": tx.user_id,
+        "user_id": current_user_id,
         "category_id": tx.category_id,
         "transaction_type": tx.type,
         "transaction_amount": round(amount_uah, 2), # Гривня
@@ -57,7 +58,7 @@ def create_transaction(tx: TransactionCreate):
     
 @router.get("/")
 def get_transactions(
-    user_id: str, 
+    current_user_id: str = Depends(get_current_user_id),
     limit: int = 50, 
     offset: int = 0,             # Для пагінації (гортати сторінки)
     start_date: Optional[date_type] = None, # Фільтр: З якої дати
@@ -77,7 +78,7 @@ def get_transactions(
         # 1. Починаємо будувати запит
         query = supabase.table("transactions")\
             .select("*")\
-            .eq("user_id", user_id)
+            .eq("user_id", current_user_id)
             
         # 2. Накладаємо фільтри, якщо вони передані
         if start_date:
@@ -107,7 +108,7 @@ def get_transactions(
 
 @router.get("/summary")
 def get_transaction_summary(
-    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
     end_date: Optional[date_type] = None
 ):
     """
@@ -117,7 +118,7 @@ def get_transaction_summary(
     try:
         query = supabase.table("transactions")\
             .select("transaction_amount, transaction_type, transaction_date, is_fop")\
-            .eq("user_id", user_id)
+            .eq("user_id", current_user_id)
         
         if end_date:
             query = query.lte("transaction_date", end_date.isoformat())
@@ -164,7 +165,7 @@ def get_transaction_summary(
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.delete("/{transaction_id}")
-def delete_transaction(transaction_id: str, user_id: str):
+def delete_transaction(transaction_id: str, current_user_id: str = Depends(get_current_user_id)):
     """
     Видаляє транзакцію за її ID.
     Перевіряє, чи належить вона цьому користувачу.
@@ -175,7 +176,7 @@ def delete_transaction(transaction_id: str, user_id: str):
         check = supabase.table("transactions")\
             .select("transaction_id")\
             .eq("transaction_id", transaction_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         if not check.data:
@@ -185,7 +186,7 @@ def delete_transaction(transaction_id: str, user_id: str):
         supabase.table("transactions")\
             .delete()\
             .eq("transaction_id", transaction_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         return {"message": "Транзакцію видалено"}
@@ -198,7 +199,11 @@ def delete_transaction(transaction_id: str, user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{transaction_id}")
-def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch):
+def patch_transaction(
+    transaction_id: str,
+    patch: TransactionPatch,
+    current_user_id: str = Depends(get_current_user_id),
+):
     """
     Часткове оновлення транзакції.
     Змінює тільки передані поля.
@@ -209,7 +214,7 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
         existing_response = supabase.table("transactions")\
             .select("*")\
             .eq("transaction_id", transaction_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         if not existing_response.data:
@@ -290,7 +295,7 @@ def patch_transaction(transaction_id: str, user_id: str, patch: TransactionPatch
         response = supabase.table("transactions")\
             .update(data_to_update)\
             .eq("transaction_id", transaction_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         return {

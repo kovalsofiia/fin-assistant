@@ -100,7 +100,6 @@ const submitUpdate = async () => {
 
   try {
     const payload = {
-      user_id: props.userId,
       category_id: form.category_id,
       type: form.type,
       amount: parseFloat(form.amount),

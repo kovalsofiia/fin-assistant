@@ -10,7 +10,7 @@ from core.constants import(
 )
 
 class TransactionCreate(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     category_id: Optional[str] = None
     type: CommonType
     # 1. Забороняємо 0 і мінус. Сума має бути строго більше 0

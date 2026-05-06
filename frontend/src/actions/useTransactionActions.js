@@ -52,7 +52,6 @@ export function useTransactionActions(userId, onUpdateCallback = null) {
 
         try {
             const payload = {
-                user_id: userId.value,
                 category_id: form.value.category_id,
                 type: form.value.type,
                 amount: parseFloat(form.value.amount),

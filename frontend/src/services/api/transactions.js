@@ -1,23 +1,19 @@
 import api from './axios';
 
 export default {
-    getTransactions(userId, params = {}) {
-        return api.get('/transactions', { params: { user_id: userId, ...params } });
+    getTransactions(params = {}) {
+        return api.get('/transactions', { params });
     },
-    getTransactionSummary(userId, params = {}) {
-        return api.get('/transactions/summary', { params: { user_id: userId, ...params } });
+    getTransactionSummary(params = {}) {
+        return api.get('/transactions/summary', { params });
     },
     createTransaction(data) {
         return api.post('/transactions', data);
     },
-    deleteTransaction(transactionId, userId) {
-        return api.delete(`/transactions/${transactionId}`, {
-            params: { user_id: userId }
-        });
+    deleteTransaction(transactionId) {
+        return api.delete(`/transactions/${transactionId}`);
     },
-    patchTransaction(transactionId, userId, data) {
-        return api.patch(`/transactions/${transactionId}`, data, {
-            params: { user_id: userId }
-        });
+    patchTransaction(transactionId, data) {
+        return api.patch(`/transactions/${transactionId}`, data);
     }
 };

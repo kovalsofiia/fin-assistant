@@ -1,6 +1,7 @@
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from core.database import supabase
+from core.auth import get_current_user_id
 from models.budget import BudgetCreate, BudgetUpdate
 from datetime import date as date_type, datetime
 import calendar
@@ -8,12 +9,12 @@ import calendar
 router = APIRouter(prefix="/budgets", tags=["Budgets"])
 
 @router.post("/")
-def create_budget(budget: BudgetCreate):
+def create_budget(budget: BudgetCreate, current_user_id: str = Depends(get_current_user_id)):
     """
     Створює новий ліміт/бюджет.
     """
     data_to_insert = {
-        "user_id": budget.user_id,
+        "user_id": current_user_id,
         "category_id": budget.category_id,
         "amount": round(budget.amount, 2),
         "period": budget.period.value,
@@ -33,14 +34,14 @@ def create_budget(budget: BudgetCreate):
 
 
 @router.get("/")
-def get_budgets(user_id: str):
+def get_budgets(current_user_id: str = Depends(get_current_user_id)):
     """
     Отримує всі бюджети користувача.
     """
     try:
         response = supabase.table("budgets")\
             .select("*")\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .order("created_at", desc=True)\
             .execute()
             
@@ -51,7 +52,11 @@ def get_budgets(user_id: str):
 
 
 @router.patch("/{budget_id}")
-def update_budget(budget_id: str, user_id: str, patch: BudgetUpdate):
+def update_budget(
+    budget_id: str,
+    patch: BudgetUpdate,
+    current_user_id: str = Depends(get_current_user_id),
+):
     """
     Оновлює бюджет (суму, категорію, період).
     """
@@ -73,7 +78,7 @@ def update_budget(budget_id: str, user_id: str, patch: BudgetUpdate):
         response = supabase.table("budgets")\
             .update(data_to_update)\
             .eq("id", budget_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         return {
@@ -86,7 +91,7 @@ def update_budget(budget_id: str, user_id: str, patch: BudgetUpdate):
 
 
 @router.delete("/{budget_id}")
-def delete_budget(budget_id: str, user_id: str):
+def delete_budget(budget_id: str, current_user_id: str = Depends(get_current_user_id)):
     """
     Видаляє бюджет за його ID.
     """
@@ -94,7 +99,7 @@ def delete_budget(budget_id: str, user_id: str):
         check = supabase.table("budgets")\
             .select("id")\
             .eq("id", budget_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         if not check.data:
@@ -103,7 +108,7 @@ def delete_budget(budget_id: str, user_id: str):
         supabase.table("budgets")\
             .delete()\
             .eq("id", budget_id)\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .execute()
             
         return {"message": "Бюджет видалено"}
@@ -121,14 +126,14 @@ def get_month_boundaries(date_obj: date_type):
 
 
 @router.get("/progress")
-def get_budgets_progress(user_id: str):
+def get_budgets_progress(current_user_id: str = Depends(get_current_user_id)):
     """
     Повертає бюджети користувача разом із поточними витратами (spent) 
     по кожному бюджету для відповідного періоду (зараз підтримується 'monthly').
     """
     try:
         # 1. Fetch budgets
-        budgets_resp = supabase.table("budgets").select("*").eq("user_id", user_id).execute()
+        budgets_resp = supabase.table("budgets").select("*").eq("user_id", current_user_id).execute()
         budgets = budgets_resp.data
 
         if not budgets:
@@ -143,7 +148,7 @@ def get_budgets_progress(user_id: str):
         # Since budgets apply only to expenses, filter by transaction_type = expense
         tx_resp = supabase.table("transactions")\
             .select("category_id, transaction_amount")\
-            .eq("user_id", user_id)\
+            .eq("user_id", current_user_id)\
             .eq("transaction_type", "expense")\
             .gte("transaction_date", first_day)\
             .lte("transaction_date", last_day)\

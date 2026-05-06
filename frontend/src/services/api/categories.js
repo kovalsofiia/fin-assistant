@@ -1,20 +1,16 @@
 import api from './axios';
 
 export default {
-    getCategories(userId) {
-        return api.get('/categories', { params: { user_id: userId } });
+    getCategories() {
+        return api.get('/categories');
     },
     createCategory(data) {
         return api.post('/categories', data);
     },
-    deleteCategory(categoryId, userId) {
-        return api.delete(`/categories/${categoryId}`, {
-            params: { user_id: userId }
-        });
+    deleteCategory(categoryId) {
+        return api.delete(`/categories/${categoryId}`);
     },
-    updateCategory(categoryId, userId, data) {
-        return api.patch(`/categories/${categoryId}`, data, {
-            params: { user_id: userId }
-        });
+    updateCategory(categoryId, data) {
+        return api.patch(`/categories/${categoryId}`, data);
     }
 };
