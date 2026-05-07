@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from core.database import supabase
 from core.auth import get_current_user_id
@@ -43,6 +43,17 @@ def _validate_fx_transaction_rules(user_id: str, currency: str):
             status_code=400,
             detail="Валютні операції потребують увімкненого режиму ЗЕД у налаштуваннях ФОП.",
         )
+
+
+def _category_ids_for_search(user_id: str, search_value: str) -> List[str]:
+    cat_res = (
+        supabase.table("categories")
+        .select("id")
+        .or_(f"user_id.is.null,user_id.eq.{user_id}")
+        .ilike("name", f"%{search_value}%")
+        .execute()
+    )
+    return [str(row.get("id")) for row in (cat_res.data or []) if row.get("id")]
 
 @router.post("/")
 def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get_current_user_id)):
@@ -101,7 +112,8 @@ def get_transactions(
     start_date: Optional[date_type] = None, # Фільтр: З якої дати
     end_date: Optional[date_type] = None,   # Фільтр: По яку дату
     type: Optional[str] = None,        # Фільтр: 'income' або 'expense'
-    category_id: Optional[str] = None  # Фільтр: за категорією
+    category_id: Optional[str] = None,  # Фільтр: за категорією
+    search: Optional[str] = None,
 ):
     """
     Отримує список транзакцій з можливістю фільтрації.
@@ -129,6 +141,36 @@ def get_transactions(
             
         if category_id:
             query = query.eq("category_id", category_id)
+
+        if search:
+            search_value = search.strip()
+            if search_value:
+                escaped = search_value.replace("%", "").replace(",", " ")
+                or_filters = [
+                    f"notes.ilike.%{escaped}%",
+                    f"currency_code.ilike.%{escaped}%",
+                    f"transaction_type.ilike.%{escaped}%",
+                ]
+
+                # Match by exact date if user entered ISO date fragment.
+                if len(escaped) >= 4 and escaped[0:4].isdigit():
+                    or_filters.append(f"transaction_date.ilike.%{escaped}%")
+
+                # Match numeric search against amount fields (exact rounded value).
+                try:
+                    numeric_value = float(escaped.replace(" ", ""))
+                    numeric_rounded = round(numeric_value, 2)
+                    or_filters.append(f"transaction_amount.eq.{numeric_rounded}")
+                    or_filters.append(f"amount_original.eq.{numeric_rounded}")
+                except Exception:
+                    pass
+
+                category_ids = _category_ids_for_search(current_user_id, escaped)
+                if category_ids:
+                    joined_ids = ",".join(category_ids)
+                    or_filters.append(f"category_id.in.({joined_ids})")
+
+                query = query.or_(",".join(or_filters))
 
         # 3. Сортування та ліміти (завжди в кінці)
         response = query\

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useTransactionStore } from '@/stores/transactionStore';
 import { Doughnut, Line, Bar } from 'vue-chartjs';
@@ -52,10 +52,22 @@ const isValidIsoDate = (value) => {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 };
 
+const pickQuery = (key) => {
+  const v = route.query[key];
+  if (Array.isArray(v)) return v[0];
+  return v;
+};
+
 const getFiltersFromQuery = () => {
-  const startDate = route.query.startDate;
-  const endDate = route.query.endDate;
-  const period = route.query.period;
+  const out = {};
+  const startDate = pickQuery('startDate');
+  const endDate = pickQuery('endDate');
+  if (isValidIsoDate(startDate) && isValidIsoDate(endDate)) {
+    out.startDate = startDate;
+    out.endDate = endDate;
+  }
+
+  const period = pickQuery('period');
   const allowedPeriods = new Set([
     '',
     'today',
@@ -67,19 +79,58 @@ const getFiltersFromQuery = () => {
     'last_3_months',
     'custom'
   ]);
-
-  if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
-    return null;
+  if (period !== undefined && period !== null && allowedPeriods.has(String(period))) {
+    out.period = period === '' ? '' : String(period);
   }
 
-  return {
-    startDate,
-    endDate,
-    type: '',
-    categoryId: '',
-    period: allowedPeriods.has(period) ? period : 'custom'
-  };
+  const type = pickQuery('type');
+  if (type === 'income' || type === 'expense') out.type = type;
+  else if (type === 'all' || type === '') out.type = '';
+
+  const category = pickQuery('category');
+  if (category !== undefined && category !== null && String(category).length > 0) {
+    out.categoryId = String(category);
+  }
+
+  const q = pickQuery('q');
+  if (typeof q === 'string') {
+    out.searchText = q;
+  }
+
+  return out;
 };
+
+const filtersMatchRouteQuery = () => {
+  const f = store.filters;
+  return (
+    (f.startDate || '') === String(pickQuery('startDate') || '') &&
+    (f.endDate || '') === String(pickQuery('endDate') || '') &&
+    String(f.period ?? '') === String(pickQuery('period') ?? '') &&
+    (f.type || '') === String(pickQuery('type') || '') &&
+    (f.categoryId || '') === String(pickQuery('category') || '') &&
+    (f.searchText || '') === String(pickQuery('q') || '')
+  );
+};
+
+const buildRouteQueryFromFilters = () => {
+  const f = store.filters;
+  const next = { ...route.query, tab: activeTab.value };
+  next.startDate = f.startDate || undefined;
+  next.endDate = f.endDate || undefined;
+  if (f.period !== undefined && f.period !== '') {
+    next.period = f.period;
+  } else {
+    delete next.period;
+  }
+  next.type = f.type || undefined;
+  next.category = f.categoryId || undefined;
+  next.q = f.searchText || undefined;
+  return Object.fromEntries(
+    Object.entries(next).filter(([, v]) => v !== undefined && v !== '')
+  );
+};
+
+let pushingFiltersToRoute = false;
 
 // Transaction logic from centralized composable
 const {
@@ -114,15 +165,15 @@ onMounted(async () => {
     await fetchFopSettings();
   }
 
-  const queryFilters = getFiltersFromQuery();
-  if (queryFilters) {
+  const queryPartial = getFiltersFromQuery();
+  if (Object.keys(queryPartial).length > 0) {
     isFilterTransitionLoading.value = true;
-    store.filters = { ...store.filters, ...queryFilters };
+    store.filters = { ...store.filters, ...queryPartial };
   }
 
   // Fetch everything needed for analytics
   await Promise.all([
-    store.fetchInitialData(queryFilters || null), // Fetch transactions and categories
+    store.fetchInitialData(null),
     budgetStore.fetchBudgetProgress(),
     budgetStore.fetchTaxHistory()
   ]);
@@ -144,15 +195,17 @@ watch(() => route.query.tab, (newTab) => {
 });
 
 watch(
-  () => [route.query.startDate, route.query.endDate, route.query.period],
+  () => route.query,
   async () => {
-    const queryFilters = getFiltersFromQuery();
-    if (!queryFilters) return;
+    if (pushingFiltersToRoute) return;
+    const partial = getFiltersFromQuery();
+    if (!Object.keys(partial).length) return;
     isFilterTransitionLoading.value = true;
-    store.filters = { ...store.filters, ...queryFilters };
-    await store.fetchTransactions(queryFilters);
+    store.filters = { ...store.filters, ...partial };
+    await nextTick();
     isFilterTransitionLoading.value = false;
-  }
+  },
+  { deep: true }
 );
 
 watch(activeTab, (newTab) => {
@@ -193,17 +246,28 @@ const syncAllHistory = async () => {
   }
 };
 
-watch(() => store.filters, (newFilters) => {
-  store.fetchTransactions();
-  
-  if (activeTab.value === 'reports') {
-    budgetStore.fetchBehaviorInsights(newFilters.startDate, newFilters.endDate);
-  }
-}, { deep: true });
+watch(
+  () => store.filters,
+  async (newFilters) => {
+    store.fetchTransactions();
+
+    if (activeTab.value === 'reports') {
+      budgetStore.fetchBehaviorInsights(newFilters.startDate, newFilters.endDate);
+    }
+
+    if (pushingFiltersToRoute) return;
+    if (filtersMatchRouteQuery()) return;
+    pushingFiltersToRoute = true;
+    await router.replace({ query: buildRouteQueryFromFilters() });
+    await nextTick();
+    pushingFiltersToRoute = false;
+  },
+  { deep: true }
+);
 
 const resetFilters = () => {
   const { start, end } = store.getMonthRange();
-  store.filters = { startDate: start, endDate: end, type: '', categoryId: '', period: 'this_month' };
+  store.filters = { startDate: start, endDate: end, type: '', categoryId: '', period: 'this_month', searchText: '' };
 };
 
 // Helper to accumulate amounts by category
@@ -556,13 +620,15 @@ const openCategoryTransactions = (categoryId) => {
     />
     <div
       v-else-if="['overview', 'transactions', 'reports'].includes(activeTab) && isFilterTransitionLoading"
-      class="bg-white p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-gray-100 mb-6 sm:mb-10 shadow-2xl shadow-gray-200/50"
+      class="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 mb-4 sm:mb-8 shadow-md shadow-gray-200/40"
     >
-      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <SkeletonLoader height="48px" borderRadius="12px" />
-        <SkeletonLoader height="48px" borderRadius="12px" />
-        <SkeletonLoader height="48px" borderRadius="12px" />
-        <SkeletonLoader height="48px" borderRadius="12px" />
+      <div class="flex flex-col min-[480px]:flex-row gap-3 min-[480px]:items-center">
+        <SkeletonLoader class="flex-1 min-w-0" height="38px" borderRadius="10px" />
+        <div class="flex flex-wrap gap-2 shrink-0">
+          <SkeletonLoader width="96px" height="38px" borderRadius="10px" />
+          <SkeletonLoader width="140px" height="38px" borderRadius="10px" />
+          <SkeletonLoader width="72px" height="38px" borderRadius="10px" />
+        </div>
       </div>
     </div>
 

@@ -13,7 +13,8 @@ export const useTransactionStore = defineStore('transactions', {
       endDate: end,
       type: '',
       categoryId: '',
-      period: 'this_month'
+      period: 'this_month',
+      searchText: ''
     };
 
     try {
@@ -73,6 +74,7 @@ export const useTransactionStore = defineStore('transactions', {
         if (effectiveFilters.endDate) params.end_date = effectiveFilters.endDate;
         if (effectiveFilters.type) params.type = effectiveFilters.type;
         if (effectiveFilters.categoryId) params.category_id = effectiveFilters.categoryId;
+        if (effectiveFilters.searchText) params.search = effectiveFilters.searchText;
 
         // Save filters to localStorage only if they are the main filters
         if (!filterOverride) {
