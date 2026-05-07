@@ -4,9 +4,45 @@ from core.database import supabase
 from core.auth import get_current_user_id
 from services.nbu_service import get_nbu_rate
 from models.transaction import TransactionCreate, TransactionPatch
+from models.common import FopGroup
+from models.setting import FopSettingsBase
 from datetime import date as date_type
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
+
+
+def _get_user_fop_settings(user_id: str) -> Optional[FopSettingsBase]:
+    profile_res = supabase.table("profiles").select("is_fop").eq("id", user_id).execute()
+    if not profile_res.data:
+        return None
+    if not profile_res.data[0].get("is_fop", False):
+        return None
+
+    settings_res = supabase.table("fop_settings").select("*").eq("user_id", user_id).execute()
+    if not settings_res.data:
+        return None
+    return FopSettingsBase(**settings_res.data[0])
+
+
+def _validate_fx_transaction_rules(user_id: str, currency: str):
+    if currency == "UAH":
+        return
+
+    settings = _get_user_fop_settings(user_id)
+    if not settings:
+        return
+
+    if settings.fop_group in [FopGroup.GROUP_1, FopGroup.GROUP_4]:
+        raise HTTPException(
+            status_code=400,
+            detail="Валютні операції заборонені для ФОП 1 та 4 групи.",
+        )
+
+    if settings.is_zed is False:
+        raise HTTPException(
+            status_code=400,
+            detail="Валютні операції потребують увімкненого режиму ЗЕД у налаштуваннях ФОП.",
+        )
 
 @router.post("/")
 def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get_current_user_id)):
@@ -15,6 +51,7 @@ def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get
     """
     final_rate = 1.0
     amount_uah = tx.amount
+    _validate_fx_transaction_rules(current_user_id, tx.currency)
 
     # Валютна магія
     if tx.currency != "UAH":
@@ -240,6 +277,7 @@ def patch_transaction(
         final_amount_original = old_data['amount_original']
         
         if needs_recalc:
+            _validate_fx_transaction_rules(current_user_id, new_currency)
             if new_currency != "UAH":
                 # 1. Якщо користувач передав курс і він > 0 — використовуємо його
                 if provided_manual_rate and provided_manual_rate > 0:

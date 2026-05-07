@@ -235,7 +235,8 @@ class TaxService:
         settings: FopSettingsBase, 
         income: float, 
         period: ReportingPeriod = ReportingPeriod.MONTH,
-        calc_date: Optional[date] = None
+        calc_date: Optional[date] = None,
+        income_by_month: Optional[Dict[str, float]] = None,
     ) -> Dict:
         # Дата для розрахунку (за замовчуванням сьогодні)
         d = calc_date or date.today()
@@ -294,8 +295,13 @@ class TaxService:
                 total_military_tax += rates["fixed_military_tax"]
                 
             elif settings.fop_group == FopGroup.GROUP_3:
-                # Для 3-ї групи податки залежать від доходу за весь період
-                monthly_income = income / months_to_calc
+                # Для 3-ї групи податки залежать від фактичного доходу у відповідному місяці періоду.
+                # Якщо є деталізація по місяцях, використовуємо її; інакше - рівномірний fallback.
+                month_key = f"{curr_y}-{curr_m:02d}"
+                if income_by_month is not None:
+                    monthly_income = float(income_by_month.get(month_key, 0.0))
+                else:
+                    monthly_income = income / months_to_calc
                 
                 # Single Tax
                 total_single_tax += monthly_income * (rates["income_tax_percent"] / 100.0)

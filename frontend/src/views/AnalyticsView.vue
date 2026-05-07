@@ -44,8 +44,42 @@ const activeTab = ref('overview');
 const isBudgetFormOpen = ref(false);
 const budgetToEdit = ref(null);
 const isSyncingTax = ref(false);
+const isFilterTransitionLoading = ref(false);
 
 const userId = ref(null);
+
+const isValidIsoDate = (value) => {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+};
+
+const getFiltersFromQuery = () => {
+  const startDate = route.query.startDate;
+  const endDate = route.query.endDate;
+  const period = route.query.period;
+  const allowedPeriods = new Set([
+    '',
+    'today',
+    'yesterday',
+    'last_week',
+    'last_two_weeks',
+    'this_month',
+    'last_month',
+    'last_3_months',
+    'custom'
+  ]);
+
+  if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
+    return null;
+  }
+
+  return {
+    startDate,
+    endDate,
+    type: '',
+    categoryId: '',
+    period: allowedPeriods.has(period) ? period : 'custom'
+  };
+};
 
 // Transaction logic from centralized composable
 const {
@@ -80,13 +114,21 @@ onMounted(async () => {
     await fetchFopSettings();
   }
 
+  const queryFilters = getFiltersFromQuery();
+  if (queryFilters) {
+    isFilterTransitionLoading.value = true;
+    store.filters = { ...store.filters, ...queryFilters };
+  }
+
   // Fetch everything needed for analytics
   await Promise.all([
-    store.fetchInitialData(), // Fetch transactions and categories
+    store.fetchInitialData(queryFilters || null), // Fetch transactions and categories
     budgetStore.fetchBudgetProgress(),
     budgetStore.fetchAnalyticsReports('monthly'),
     budgetStore.fetchTaxHistory()
   ]);
+
+  isFilterTransitionLoading.value = false;
 });
 
 const submitNewCategory = async () => {
@@ -97,6 +139,18 @@ const submitNewCategory = async () => {
 watch(() => route.query.tab, (newTab) => {
   if (newTab) activeTab.value = newTab;
 });
+
+watch(
+  () => [route.query.startDate, route.query.endDate, route.query.period],
+  async () => {
+    const queryFilters = getFiltersFromQuery();
+    if (!queryFilters) return;
+    isFilterTransitionLoading.value = true;
+    store.filters = { ...store.filters, ...queryFilters };
+    await store.fetchTransactions(queryFilters);
+    isFilterTransitionLoading.value = false;
+  }
+);
 
 watch(activeTab, (newTab) => {
   router.replace({ query: { ...route.query, tab: newTab } });
@@ -499,10 +553,21 @@ const categoryAreaOptions = {
 
     <!-- Filters Bar - Unified for all tabs -->
     <TransactionFilters 
-      v-if="['overview', 'transactions', 'reports'].includes(activeTab)"
+      v-if="['overview', 'transactions', 'reports'].includes(activeTab) && !isFilterTransitionLoading"
       v-model:filters="store.filters"
       @reset="resetFilters"
     />
+    <div
+      v-else-if="['overview', 'transactions', 'reports'].includes(activeTab) && isFilterTransitionLoading"
+      class="bg-white p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-gray-100 mb-6 sm:mb-10 shadow-2xl shadow-gray-200/50"
+    >
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <SkeletonLoader height="48px" borderRadius="12px" />
+        <SkeletonLoader height="48px" borderRadius="12px" />
+        <SkeletonLoader height="48px" borderRadius="12px" />
+        <SkeletonLoader height="48px" borderRadius="12px" />
+      </div>
+    </div>
 
     <!-- Обгортка для вкладки Огляд -->
     <div v-show="activeTab === 'overview'">

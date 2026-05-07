@@ -161,6 +161,33 @@ const monthName = computed(() => {
   return new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(new Date(currentYear.value, currentMonth.value));
 });
 
+const analyticsTransactionsLink = computed(() => {
+  const filters = getPeriodFilters();
+  const currentMonthRange = txStore.getMonthRange();
+  const now = new Date();
+  const lastMonthRange = txStore.getMonthRange(
+    now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(),
+    now.getMonth() === 0 ? 11 : now.getMonth() - 1
+  );
+
+  let period = 'custom';
+  if (filters.startDate === currentMonthRange.start && filters.endDate === currentMonthRange.end) {
+    period = 'this_month';
+  } else if (filters.startDate === lastMonthRange.start && filters.endDate === lastMonthRange.end) {
+    period = 'last_month';
+  }
+
+  return {
+    path: '/analytics',
+    query: {
+      tab: 'transactions',
+      period,
+      startDate: filters.startDate,
+      endDate: filters.endDate
+    }
+  };
+});
+
 // Обчислення податків на основі даних з API
 const taxCalculations = computed(() => {
   if (!taxData.value) return { total: 0, ep: 0, esv: 0, vz: 0 };
@@ -322,7 +349,7 @@ const getCategoryName = (id) => {
       <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div class="p-4 border-b flex justify-between items-center bg-gray-50">
           <h2 class="font-bold text-gray-700">Останні операції</h2>
-          <router-link :to="{ path: '/analytics', query: { tab: 'transactions' } }" class="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors">
+          <router-link :to="analyticsTransactionsLink" class="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors">
             Всі транзакції →
           </router-link>
         </div>

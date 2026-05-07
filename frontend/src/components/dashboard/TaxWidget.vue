@@ -69,7 +69,7 @@ defineProps({
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
         <div class="flex flex-col">
           <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Військовий збір</span>
-          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ rules.military_tax_percent || 1.5 }}%</span>
+          <span class="text-sm font-bold text-gray-700" v-if="settings?.fop_group === 3">Ставка {{ rules.military_tax_percent || 1.0 }}%</span>
           <span class="text-sm font-bold text-gray-700" v-else>Фіксовано {{ rules.fixed_military_tax || 800 }} ₴</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
