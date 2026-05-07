@@ -5,10 +5,29 @@ from typing import Optional
 from datetime import date as date_type, datetime, timedelta
 import calendar
 from services.tax_service import TaxService
+from services.insight_service import InsightService
 from models.setting import FopSettingsBase
 from models.common import ReportingPeriod
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
+
+
+@router.get("/insights")
+def get_insights(
+    start_date: str,
+    end_date: str,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Повертає explainable-інсайти по витратах за категоріями з ризик-скорингом і рекомендаціями.
+    """
+    try:
+        return InsightService.build_insights(current_user_id, start_date, end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"Error generating insights for {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося згенерувати інсайти")
 
 @router.get("/reports")
 def get_reports(

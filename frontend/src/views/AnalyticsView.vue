@@ -124,9 +124,12 @@ onMounted(async () => {
   await Promise.all([
     store.fetchInitialData(queryFilters || null), // Fetch transactions and categories
     budgetStore.fetchBudgetProgress(),
-    budgetStore.fetchAnalyticsReports('monthly'),
     budgetStore.fetchTaxHistory()
   ]);
+
+  if (activeTab.value === 'reports' && store.filters.startDate && store.filters.endDate) {
+    await budgetStore.fetchBehaviorInsights(store.filters.startDate, store.filters.endDate);
+  }
 
   isFilterTransitionLoading.value = false;
 });
@@ -158,16 +161,7 @@ watch(activeTab, (newTab) => {
     budgetStore.fetchTaxHistory();
   }
   if (newTab === 'reports') {
-    const periodMap = {
-      'today': 'daily',
-      'last_week': 'weekly',
-      'this_month': 'monthly',
-      'last_month': 'monthly',
-      'last_3_months': 'yearly',
-      'custom': 'monthly'
-    };
-    const period = periodMap[store.filters.period] || 'monthly';
-    budgetStore.fetchAnalyticsReports(period, store.filters.startDate, store.filters.endDate);
+    budgetStore.fetchBehaviorInsights(store.filters.startDate, store.filters.endDate);
   }
 });
 
@@ -203,16 +197,7 @@ watch(() => store.filters, (newFilters) => {
   store.fetchTransactions();
   
   if (activeTab.value === 'reports') {
-    const periodMap = {
-      'today': 'daily',
-      'last_week': 'weekly',
-      'this_month': 'monthly',
-      'last_month': 'monthly',
-      'last_3_months': 'yearly',
-      'custom': 'monthly'
-    };
-    const period = periodMap[newFilters.period] || 'monthly';
-    budgetStore.fetchAnalyticsReports(period, newFilters.startDate, newFilters.endDate);
+    budgetStore.fetchBehaviorInsights(newFilters.startDate, newFilters.endDate);
   }
 }, { deep: true });
 
@@ -521,6 +506,18 @@ const barOptions = {
 const categoryAreaOptions = {
   ...areaOptions,
   onClick: (event, elements) => handleTimePointClick(event, elements, 'category')
+};
+
+const severityBadgeClass = (severity) => {
+  if (severity === 'high') return 'bg-red-100 text-red-700 border-red-200';
+  if (severity === 'medium') return 'bg-amber-100 text-amber-700 border-amber-200';
+  return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+};
+
+const openCategoryTransactions = (categoryId) => {
+  store.filters.categoryId = categoryId === 'uncategorized' ? '' : categoryId;
+  store.filters.type = 'expense';
+  activeTab.value = 'transactions';
 };
 </script>
 
@@ -852,26 +849,91 @@ const categoryAreaOptions = {
          <h2 class="text-2xl font-black text-gray-800 tracking-tight">Розширена Аналітика</h2>
       </div>
 
-      <div v-if="budgetStore.reports" class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white p-6 rounded-[2rem] border border-green-100 shadow-xl shadow-green-100/30">
-          <p class="text-sm font-bold text-green-500 uppercase tracking-wider mb-2">Загальний дохід</p>
-          <span class="text-3xl font-black text-gray-900">{{ Number(budgetStore.reports.total_income).toLocaleString('uk-UA') }} ₴</span>
+      <div v-if="budgetStore.insights?.summary" class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-white p-6 rounded-[2rem] border border-blue-100 shadow-xl shadow-blue-100/20">
+          <p class="text-sm font-bold text-blue-500 uppercase tracking-wider mb-2">Savings rate</p>
+          <span class="text-3xl font-black text-gray-900">{{ budgetStore.insights.summary.savings_rate }}%</span>
         </div>
-        <div class="bg-white p-6 rounded-[2rem] border border-red-100 shadow-xl shadow-red-100/30">
-          <p class="text-sm font-bold text-red-500 uppercase tracking-wider mb-2">Загальні витрати</p>
-          <span class="text-3xl font-black text-gray-900">{{ Number(budgetStore.reports.total_expenses).toLocaleString('uk-UA') }} ₴</span>
+        <div class="bg-white p-6 rounded-[2rem] border border-indigo-100 shadow-xl shadow-indigo-100/20">
+          <p class="text-sm font-bold text-indigo-500 uppercase tracking-wider mb-2">Топ-3 концентрація</p>
+          <span class="text-3xl font-black text-gray-900">{{ budgetStore.insights.summary.top3_concentration }}%</span>
         </div>
-        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-[2rem] shadow-xl shadow-indigo-200/50 text-white leading-tight">
-          <p class="text-sm font-bold text-indigo-100 uppercase tracking-wider mb-2">Прогноз витрат<br/><span class="text-xs opacity-70">(до кінця періоду)</span></p>
-          <span class="text-3xl font-black">{{ Number(budgetStore.reports.forecast_expenses).toLocaleString('uk-UA') }} ₴</span>
+        <div class="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/20 md:col-span-2">
+          <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Період аналізу</p>
+          <span class="text-lg font-black text-gray-900">
+            {{ budgetStore.insights.summary.start_date }} — {{ budgetStore.insights.summary.end_date }}
+          </span>
+          <p class="text-xs text-gray-400 mt-2">
+            Порівняння з: {{ budgetStore.insights.summary.previous_start_date }} — {{ budgetStore.insights.summary.previous_end_date }}
+          </p>
         </div>
       </div>
 
-      <!-- Tips Section -->
-      <div v-if="budgetStore.reports && budgetStore.reports.tips.length > 0" class="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl shadow-amber-100/20 border border-amber-50 flex flex-col gap-4">
-        <h3 class="text-xl font-black text-gray-800 flex items-center gap-3"><span class="w-10 h-10 bg-amber-100 flex items-center justify-center rounded-xl text-amber-500"><PieChart size="20" stroke-width="2.5"/></span> Аналіз поведінки</h3>
-        <div v-for="(tip, idx) in budgetStore.reports.tips" :key="idx" class="p-5 bg-amber-50 text-amber-900 rounded-[1.5rem] font-medium border border-amber-100 leading-relaxed shadow-sm">
+      <div v-if="budgetStore.insights?.global_recommendations?.length" class="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl shadow-green-100/20 border border-green-50 flex flex-col gap-4">
+        <h3 class="text-xl font-black text-gray-800 flex items-center gap-3">
+          <span class="w-10 h-10 bg-green-100 flex items-center justify-center rounded-xl text-green-600">
+            <TrendingUp size="20" stroke-width="2.5"/>
+          </span>
+          Глобальні рекомендації
+        </h3>
+        <div
+          v-for="(tip, idx) in budgetStore.insights.global_recommendations"
+          :key="`global-${idx}`"
+          class="p-4 bg-green-50 text-green-900 rounded-2xl font-medium border border-green-100"
+        >
           {{ tip }}
+        </div>
+      </div>
+
+      <div v-if="budgetStore.insights?.category_insights?.length" class="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-xl shadow-gray-200/40 border border-gray-100 flex flex-col gap-4">
+        <h3 class="text-xl font-black text-gray-800">Інсайти по категоріях витрат</h3>
+        <div
+          v-for="item in budgetStore.insights.category_insights"
+          :key="item.category_id"
+          class="rounded-2xl border border-gray-100 p-5 bg-gray-50/50"
+        >
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <p class="text-lg font-black text-gray-900">{{ item.category_name }}</p>
+              <p class="text-sm text-gray-500">
+                Поточні: {{ Number(item.spent_current).toLocaleString('uk-UA') }} ₴ ·
+                Попередні: {{ Number(item.spent_previous).toLocaleString('uk-UA') }} ₴
+              </p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="px-3 py-1 rounded-full text-xs font-black uppercase border" :class="severityBadgeClass(item.severity)">
+                {{ item.severity }}
+              </span>
+              <span class="text-sm font-black text-gray-700">Score: {{ item.risk_score }}</span>
+            </div>
+          </div>
+
+          <p class="mt-3 text-sm text-gray-700 leading-relaxed">{{ item.conclusion }}</p>
+
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-bold text-gray-600">
+            <span>Частка у витратах: {{ item.share_of_total }}%</span>
+            <span>Δ до попереднього періоду: {{ item.delta_pct }}%</span>
+            <span v-if="item.budget_usage_pct !== null">Використання бюджету: {{ item.budget_usage_pct }}%</span>
+          </div>
+
+          <ul class="mt-3 space-y-2">
+            <li
+              v-for="(rec, idx) in item.recommendations"
+              :key="`${item.category_id}-${idx}`"
+              class="text-sm text-blue-900 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2"
+            >
+              {{ rec }}
+            </li>
+          </ul>
+
+          <div class="mt-4">
+            <button
+              @click="openCategoryTransactions(item.category_id)"
+              class="text-xs font-black uppercase tracking-widest text-blue-600 hover:text-blue-800"
+            >
+              Переглянути транзакції категорії →
+            </button>
+          </div>
         </div>
       </div>
     </div>

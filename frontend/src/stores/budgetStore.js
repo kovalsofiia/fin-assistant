@@ -6,6 +6,7 @@ export const useBudgetStore = defineStore('budgets', {
         budgets: [],
         budgetProgress: [],
         reports: null,
+        insights: null,
         taxHistory: [],
         isLoading: false,
         error: null
@@ -61,6 +62,20 @@ export const useBudgetStore = defineStore('budgets', {
             } catch (e) {
                 console.error("Error fetching reports:", e);
                 this.error = "Не вдалося завантажити звіти";
+            } finally {
+                this.isLoading = false;
+            }
+        },
+
+        async fetchBehaviorInsights(startDate, endDate) {
+            if (!startDate || !endDate) return;
+            this.isLoading = true;
+            try {
+                const res = await api.getBehaviorInsights(startDate, endDate);
+                this.insights = res.data;
+            } catch (e) {
+                console.error("Error fetching behavior insights:", e);
+                this.error = "Не вдалося завантажити інсайти по категоріях";
             } finally {
                 this.isLoading = false;
             }

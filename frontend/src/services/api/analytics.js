@@ -10,6 +10,13 @@ export default {
             }
         }),
     getTaxHistory: () => api.get('/analytics/history/taxes'),
+    getBehaviorInsights: (startDate, endDate) =>
+        api.get('/analytics/insights', {
+            params: {
+                start_date: startDate,
+                end_date: endDate
+            }
+        }),
     syncTaxMonth: (year, month) => api.post('/analytics/history/taxes/sync', null, { params: { year, month } }),
     syncAllTaxes: () => api.post('/analytics/history/taxes/sync_all')
 };
