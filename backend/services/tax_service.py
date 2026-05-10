@@ -199,7 +199,13 @@ class TaxService:
     @staticmethod
     def get_esv_rate(user_id: str, settings: FopSettingsBase, year: int, month: int) -> float:
         """
-        Отримує ставку ЄСВ на конкретний місяць з урахуванням оверрайдів.
+        ЄСВ за місяць (сума «мінімального» місячного внеску в логіці застосунку).
+
+        Порядок:
+        1) Рядок у user_esv_overrides для (user_id, year, month) — явна сума або 0 (діє для будь-якої групи).
+        2) ФОП група 3 + esv_covered_by_primary_employment — 0 (користувач планує, що внесок не з ФОП; перевірити з бухгалтером і правилами ПФУ).
+        3) Майбутні періоди: можлива ставка з fop_settings.esv_value, якщо > 0.
+        4) Інакче — ставка з tax_rules для цього місяця.
         """
         try:
             # 1. User Override (Пріоритет №1)
@@ -209,7 +215,7 @@ class TaxService:
                 .eq("year", int(year))\
                 .eq("month", int(month))\
                 .execute()
-            
+
             if user_override.data:
                 val = user_override.data[0].get("value")
                 if val is not None:
@@ -217,11 +223,14 @@ class TaxService:
         except Exception as e:
             print(f"DEBUG: Error in get_esv_rate override check: {e}")
 
-        # 2. Глобальні правила (Пріоритет №2)
+        if settings.fop_group == FopGroup.GROUP_3 and settings.esv_covered_by_primary_employment:
+            return 0.0
+
+        # 3. Базова ставка з tax_rules для місяця
         rules = TaxService.get_tax_rules(year, month)
         base_esv = float(rules.get("esv_value", MIN_ESV))
-        
-        # 3. Перевірка налаштувань користувача (для майбутніх періодів)
+
+        # 4. Майбутні періоди: можлива заміна з fop_settings.esv_value
         today = date.today()
         if (year > today.year) or (year == today.year and month >= today.month):
             if settings.esv_value and settings.esv_value > 0:

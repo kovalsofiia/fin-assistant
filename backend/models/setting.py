@@ -29,6 +29,8 @@ class FopSettingsBase(BaseModel):
     has_employees: bool = Field(False)
     employees_count: int = Field(0, ge=0)
     is_vat_payer: bool = Field(False)
+    # Лише змістовне для групи 3: у розрахунках не нараховувати мінімальний ЄСВ з ФОП (наприклад, внесок уже з основної зайнятості). Податкова ситуація має узгоджуватися з бухгалтером.
+    esv_covered_by_primary_employment: bool = Field(False)
     land_area_ha: Optional[float] = Field(None, ge=0)
     normative_land_value: Optional[float] = Field(None, ge=0)
 

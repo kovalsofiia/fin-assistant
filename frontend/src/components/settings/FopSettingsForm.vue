@@ -46,6 +46,9 @@ watch(localSettings, (newVal) => {
 // Watchers for internal FOP business logic:
 watch(() => localSettings.value.fop_group, (newGroup) => {
   const group = parseInt(newGroup);
+  if (group !== 3) {
+    localSettings.value.esv_covered_by_primary_employment = false;
+  }
   if (group === 1 || group === 4) {
     localSettings.value.has_employees = false;
     localSettings.value.employees_count = 0;
@@ -227,7 +230,8 @@ const removeKved = (code) => {
         </label>
 
         <!-- Tax Rates Inputs -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
+        <div class="flex flex-col gap-4 p-6 bg-gray-50/50 rounded-3xl border border-gray-100 shadow-inner">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           <!-- Єдиний податок -->
           <div class="flex flex-col gap-2">
             <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
@@ -299,12 +303,33 @@ const removeKved = (code) => {
                 type="number" 
                 min="0"
                 step="0.01"
-                v-model.number="localSettings.esv_value" 
-                :class="[localSettings.fop_group === 1 || localSettings.fop_group === 2 ? 'bg-indigo-50/30' : 'bg-white text-gray-800']"
+                v-model.number="localSettings.esv_value"
+                :disabled="localSettings.fop_group === 3 && localSettings.esv_covered_by_primary_employment"
+                :class="[
+                  localSettings.fop_group === 1 || localSettings.fop_group === 2 ? 'bg-indigo-50/30' : 'bg-white text-gray-800',
+                  localSettings.fop_group === 3 && localSettings.esv_covered_by_primary_employment ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                ]"
                 class="px-4 py-3 border-2 border-transparent focus:border-indigo-500 rounded-xl outline-none transition-all font-bold text-gray-800 w-full"
+                :title="localSettings.fop_group === 3 && localSettings.esv_covered_by_primary_employment ? 'Для планування ЄСВ з ФОП не нараховується' : ''"
               >
               <span v-if="localSettings.fop_group === 1 || localSettings.fop_group === 2" class="text-[8px] text-gray-400 font-bold px-1 uppercase tracking-tighter">Зазвичай {{ APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE.toFixed(2) }} грн (22% від мін. з/п)</span>
           </div>
+          </div>
+
+          <label
+            v-if="localSettings.fop_group === 3"
+            class="flex items-start gap-3 w-full p-4 bg-amber-50/80 rounded-2xl border border-amber-100 cursor-pointer hover:bg-amber-50 transition-colors"
+          >
+            <input
+              v-model="localSettings.esv_covered_by_primary_employment"
+              type="checkbox"
+              class="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0"
+            >
+            <span class="text-sm text-gray-800 leading-snug min-w-0">
+              <span class="font-black text-gray-900">Не нараховувати мінімальний ЄСВ з ФОП</span>
+              <span class="block text-xs font-semibold text-gray-600 mt-1">Наприклад, ЄСВ уже сплачується з основної зайнятості. Це впливає лише на планові розрахунки в застосунку; юридичну та звітну обліковість узгодьте з бухгалтером і правилами ПФУ.</span>
+            </span>
+          </label>
         </div>
 
         <!-- KVEDs Section -->

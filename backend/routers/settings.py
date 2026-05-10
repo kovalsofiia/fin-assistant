@@ -32,7 +32,8 @@ def get_fop_settings(user_id: str, current_user_id: str = Depends(get_current_us
                 "has_employees": False,
                 "employees_count": 0,
                 "is_vat_payer": False,
-                "registration_date": None
+                "registration_date": None,
+                "esv_covered_by_primary_employment": False
             }
             try:
                 new_settings = supabase.table("fop_settings").insert(default_data).execute()
@@ -57,7 +58,8 @@ def get_fop_settings(user_id: str, current_user_id: str = Depends(get_current_us
             "is_zed": False,
             "tax_system": TaxSystem.SIMPLIFIED,
             "activity_type": ActivityType.SERVICES,
-            "registration_date": None
+            "registration_date": None,
+            "esv_covered_by_primary_employment": False
         }
 
 @router.patch("/{user_id}")
@@ -88,7 +90,7 @@ def update_fop_settings(
             # Якщо проблема в конкретній колонці, якої немає в БД
             if "column" in error_str and "does not exist" in error_str:
                 # Спробуємо видалити проблемні нові поля і зберегти що залишилось
-                new_fields = ["registration_date", "tax_system", "activity_type", "has_employees", "employees_count", "is_vat_payer", "land_area_ha", "normative_land_value"]
+                new_fields = ["registration_date", "tax_system", "activity_type", "has_employees", "employees_count", "is_vat_payer", "land_area_ha", "normative_land_value", "esv_covered_by_primary_employment"]
                 for field in new_fields:
                     if field in update_data:
                         del update_data[field]

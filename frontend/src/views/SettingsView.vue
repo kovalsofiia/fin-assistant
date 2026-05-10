@@ -36,6 +36,7 @@ const fopSettings = ref({
   is_zed: false,
   income_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3,
   esv_value: APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE,
+  esv_covered_by_primary_employment: false,
   military_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.MILITARY_TAX_PERCENT,
   tax_system: 'simplified',
   activity_type: 'services',
@@ -81,6 +82,7 @@ const loadData = async () => {
             is_zed: settingsRes.data.is_zed,
             income_tax_percent: settingsRes.data.income_tax_percent,
             esv_value: settingsRes.data.esv_value,
+            esv_covered_by_primary_employment: !!(settingsRes.data.esv_covered_by_primary_employment),
             military_tax_percent: settingsRes.data.military_tax_percent,
             tax_system: settingsRes.data.tax_system || 'simplified',
             activity_type: settingsRes.data.activity_type || 'services',
@@ -154,6 +156,10 @@ const saveChanges = async () => {
         is_zed: fopSettings.value.is_zed,
         income_tax_percent: fopSettings.value.income_tax_percent,
         esv_value: fopSettings.value.esv_value,
+        esv_covered_by_primary_employment:
+          parseInt(fopSettings.value.fop_group) === 3
+            ? !!fopSettings.value.esv_covered_by_primary_employment
+            : false,
         military_tax_percent: fopSettings.value.military_tax_percent,
         tax_system: fopSettings.value.tax_system,
         activity_type: fopSettings.value.activity_type,
