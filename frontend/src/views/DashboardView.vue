@@ -204,6 +204,17 @@ const taxCalculations = computed(() => {
   };
 });
 
+const taxAccrualPeriodLabel = computed(() => {
+  return selectedPeriodType.value === 'month' ? 'місяць' : 'квартал';
+});
+
+const group3PaymentTermHint = computed(() => {
+  const event = paymentCalendar.value.find((item) =>
+    item?.group?.includes('3') && item?.event?.toLowerCase().includes('єдиний податок')
+  );
+  return event?.deadline || 'щокварталу, до 20-го числа наступного кварталу';
+});
+
 // Реальний баланс за весь час (Після податків)
 // Примітка: Це оціночне значення, оскільки ми не рахуємо кожен історичний місяць окремо на фронті.
 const realBalance = computed(() => {
@@ -320,6 +331,8 @@ const getCategoryName = (id) => {
         <TaxWidget 
           :calculations="taxCalculations" 
           :settings="fopSettings" 
+          :period-label="taxAccrualPeriodLabel"
+          :payment-term-hint="group3PaymentTermHint"
           :loading="isPageLoading || !fopSettings"
         />
 

@@ -16,7 +16,7 @@ const rules = computed(() => taxRulesStore.currentRules || {
   income_tax_percent: APP_CONSTANTS.TAX_DEFAULTS.INCOME_TAX_G3
 });
 
-defineProps({
+const props = defineProps({
   calculations: {
     type: Object,
     required: true // { total, ep, vz, esv }
@@ -31,8 +31,18 @@ defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  periodLabel: {
+    type: String,
+    default: 'обраний період'
+  },
+  paymentTermHint: {
+    type: String,
+    default: ''
   }
 });
+
+const isGroup3 = computed(() => props.settings?.fop_group === 3);
 </script>
 
 <template>
@@ -48,10 +58,20 @@ defineProps({
     </div>
     
     <!-- Total Block -->
-    <div class="bg-blue-50 p-4 rounded-lg flex justify-between items-center mb-6 border border-blue-100">
-      <span class="text-blue-800 font-medium text-sm uppercase tracking-wide">Всього до сплати</span>
-      <SkeletonLoader v-if="loading" width="100px" height="28px" className="bg-blue-100" />
-      <span v-else class="text-2xl font-bold text-blue-900">{{ (calculations.total || 0).toFixed(2) }} ₴</span>
+    <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100">
+      <div class="flex justify-between items-center gap-3">
+        <span class="text-blue-800 font-medium text-sm uppercase tracking-wide">
+          Нараховано за {{ periodLabel }}
+        </span>
+        <SkeletonLoader v-if="loading" width="100px" height="28px" className="bg-blue-100" />
+        <span v-else class="text-2xl font-bold text-blue-900">{{ (calculations.total || 0).toFixed(2) }} ₴</span>
+      </div>
+      <p v-if="isGroup3" class="text-xs text-blue-800/80 mt-2">
+        Це оціночне нарахування за доходами періоду, не підтвердження фактичного платежу до ДПС.
+      </p>
+      <p v-if="isGroup3 && paymentTermHint" class="text-xs text-indigo-700 mt-1 font-semibold">
+        Строк сплати (ФОП 3): {{ paymentTermHint }}
+      </p>
     </div>
 
     <!-- Breakdown List -->
@@ -89,7 +109,7 @@ defineProps({
     <!-- Note -->
     <div class="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400 italic flex items-start gap-1.5">
       <Info class="w-3.5 h-3.5 mt-0.5 shrink-0" />
-      <span>Розрахунок є орієнтовним та базується на поточному доході та вказаних ставках.</span>
+      <span>Розрахунок є орієнтовним: нарахування рахується за періодом, а фактична сплата виконується за календарем ДПС.</span>
     </div>
   </div>
 </template>
