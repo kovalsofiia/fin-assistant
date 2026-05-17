@@ -1,6 +1,5 @@
 <script setup>
 import { onMounted, computed, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { useTransactionStore } from '@/stores/transactionStore';
 import api from '@/services/api';
 import { supabase } from '@/services/supabase';
@@ -19,17 +18,15 @@ import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
 import CategoryModal from '@/components/common/CategoryModal.vue';
-import { ArrowDownLeft, ArrowUpRight, Calculator, Info, Clock, CreditCard, User, Plus } from 'lucide-vue-next';
+import { ArrowDownLeft, ArrowUpRight, Calculator, Info, CreditCard, User, Plus } from 'lucide-vue-next';
 import { useTransactionActions } from '@/actions/useTransactionActions';
 
 const txStore = useTransactionStore();
-const router = useRouter();
 const profile = ref(null);
 const userId = ref(null);
 const isPageLoading = ref(true);
 const taxData = ref(null);
 const taxWarnings = ref([]);
-const paymentCalendar = ref([]);
 
 // Transaction logic from centralized composable
 const {
@@ -116,7 +113,6 @@ const fetchTaxAnalysis = async () => {
     });
     taxData.value = res.data.taxes;
     taxWarnings.value = res.data.warnings;
-    paymentCalendar.value = res.data.calendar;
   } catch (e) {
     console.error("Tax Calculation error:", e);
   }
@@ -209,10 +205,8 @@ const taxAccrualPeriodLabel = computed(() => {
 });
 
 const group3PaymentTermHint = computed(() => {
-  const event = paymentCalendar.value.find((item) =>
-    item?.group?.includes('3') && item?.event?.toLowerCase().includes('єдиний податок')
-  );
-  return event?.deadline || 'щокварталу, до 20-го числа наступного кварталу';
+  const group = fopSettings.value?.fop_group;
+  return APP_CONSTANTS.PAYMENT_TERM_HINTS[group] || APP_CONSTANTS.PAYMENT_TERM_HINTS[3];
 });
 
 // Реальний баланс за весь час (Після податків)
@@ -335,27 +329,6 @@ const getCategoryName = (id) => {
           :payment-term-hint="group3PaymentTermHint"
           :loading="isPageLoading || !fopSettings"
         />
-
-        <!-- Payment Calendar Widget (Hidden for now) -->
-        <div v-if="false" class="bg-white rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-8">
-            <h3 class="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-                <Clock class="w-6 h-6 text-blue-600" />
-                Календар оплат
-            </h3>
-            <div class="space-y-4">
-                <div v-for="(event, idx) in paymentCalendar" :key="idx" class="flex gap-4 p-4 rounded-2xl bg-gray-50 border border-transparent hover:border-blue-100 transition-all">
-                    <div class="w-1 h-full bg-blue-500 rounded-full"></div>
-                    <div>
-                        <p class="text-xs font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{{ event.deadline }}</p>
-                        <p class="font-black text-gray-800 leading-tight">{{ event.event }}</p>
-                        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-tight mt-1">Група: {{ event.group }}</p>
-                    </div>
-                </div>
-                <div v-if="paymentCalendar.length === 0" class="text-center py-6 text-gray-400 italic text-sm">
-                    Календар завантажується...
-                </div>
-            </div>
-        </div>
       </div>
 
       <!-- Recent Transactions List Column -->

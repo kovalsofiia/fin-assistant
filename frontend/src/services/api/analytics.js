@@ -18,5 +18,10 @@ export default {
             }
         }),
     syncTaxMonth: (year, month) => api.post('/analytics/history/taxes/sync', null, { params: { year, month } }),
-    syncAllTaxes: () => api.post('/analytics/history/taxes/sync_all')
+    syncAllTaxes: () => api.post('/analytics/history/taxes/sync_all'),
+    exportCsv: (exportType, params = {}) =>
+        api.get('/analytics/export/csv', {
+            params: { export_type: exportType, ...params },
+            responseType: 'blob',
+        }),
 };

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from core.database import supabase
 from core.auth import get_current_user_id
 from typing import Optional
@@ -6,6 +7,7 @@ from datetime import date as date_type, datetime, timedelta
 import calendar
 from services.tax_service import TaxService
 from services.insight_service import InsightService
+from services.csv_export_service import CsvExportService
 from models.setting import FopSettingsBase
 from models.common import ReportingPeriod
 
@@ -314,3 +316,54 @@ def sync_all_taxes(current_user_id: str = Depends(get_current_user_id)):
     except Exception as e:
         print(f"Error syncing all taxes for {current_user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export/csv")
+def export_csv(
+    export_type: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    year: Optional[int] = None,
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Експорт даних у CSV для планування звітності та аналізу.
+    export_type: transactions | report | tax_history
+    """
+    allowed = {"transactions", "report", "tax_history"}
+    if export_type not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Невідомий export_type. Дозволено: {', '.join(sorted(allowed))}",
+        )
+
+    try:
+        if export_type == "transactions":
+            content = CsvExportService.export_transactions(
+                current_user_id, start_date, end_date
+            )
+        elif export_type == "report":
+            if not start_date or not end_date:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Для export_type=report потрібні start_date та end_date",
+                )
+            content = CsvExportService.export_financial_report(
+                current_user_id, start_date, end_date
+            )
+        else:
+            content = CsvExportService.export_tax_history(
+                current_user_id, year
+            )
+
+        filename = CsvExportService.filename(export_type, start_date, end_date)
+        return Response(
+            content=content.encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"CSV export error for {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося експортувати CSV")

@@ -133,13 +133,9 @@ def calculate_tax(
             income_by_month=income_by_month,
         )
         
-        # 6. Календар
-        calendar = TaxService.get_payment_calendar()
-        
         return {
             "taxes": taxes,
             "warnings": warnings,
-            "calendar": calendar
         }
     except Exception as e:
         if isinstance(e, HTTPException): raise e

@@ -25,6 +25,7 @@ import TransactionList from '@/components/transactions/TransactionList.vue';
 import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
 import CategoryModal from '@/components/common/CategoryModal.vue';
 import TransactionModal from '@/components/dashboard/TransactionModal.vue';
+import ExportCsvPanel from '@/components/analytics/ExportCsvPanel.vue';
 import { useBudgetStore } from '@/stores/budgetStore';
 import { supabase } from '@/services/supabase';
 import api from '@/services/api';
@@ -155,7 +156,8 @@ const {
 onMounted(async () => {
   // Check for tab in query
   if (route.query.tab) {
-    activeTab.value = route.query.tab;
+    const tab = String(route.query.tab);
+    activeTab.value = tab === 'calendar' ? 'overview' : tab;
   }
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -191,7 +193,9 @@ const submitNewCategory = async () => {
 
 // Sync tab with query
 watch(() => route.query.tab, (newTab) => {
-  if (newTab) activeTab.value = newTab;
+  if (!newTab) return;
+  const tab = String(newTab);
+  activeTab.value = tab === 'calendar' ? 'overview' : tab;
 });
 
 watch(
@@ -583,6 +587,20 @@ const openCategoryTransactions = (categoryId) => {
   store.filters.type = 'expense';
   activeTab.value = 'transactions';
 };
+
+const exportYear = computed(() => {
+  const sd = store.filters.startDate;
+  if (sd && /^\d{4}/.test(sd)) return parseInt(sd.slice(0, 4), 10);
+  return new Date().getFullYear();
+});
+
+const analyticsTabs = [
+  { id: 'overview', label: 'Огляд' },
+  { id: 'transactions', label: 'Транзакції' },
+  { id: 'budgets', label: 'Бюджети' },
+  { id: 'history', label: 'Історія податків' },
+  { id: 'reports', label: 'Аналіз поведінки' },
+];
 </script>
 
 <template>
@@ -602,7 +620,7 @@ const openCategoryTransactions = (categoryId) => {
     <!-- Tabs Navigation -->
     <div class="flex flex-wrap gap-2 mb-8 bg-gray-100/50 p-2 rounded-[2rem] max-w-fit">
       <button 
-        v-for="tab in [{id: 'overview', label: 'Огляд'}, {id: 'transactions', label: 'Транзакції'}, {id: 'budgets', label: 'Бюджети'}, {id: 'history', label: 'Історія податків'}, {id: 'reports', label: 'Аналіз поведінки'}]" 
+        v-for="tab in analyticsTabs" 
         :key="tab.id"
         @click="activeTab = tab.id"
         class="px-6 py-3 rounded-3xl font-bold transition-all duration-300 outline-none"
@@ -789,6 +807,13 @@ const openCategoryTransactions = (categoryId) => {
         </div>
       </div>
     </div>
+
+      <ExportCsvPanel
+        class="mt-8"
+        :start-date="store.filters.startDate"
+        :end-date="store.filters.endDate"
+        :year="exportYear"
+      />
     </div> <!-- Закінчення activeTab === 'overview' -->
 
     <!-- Вкладка Транзакції -->
