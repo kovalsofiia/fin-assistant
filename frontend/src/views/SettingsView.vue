@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/services/api'; 
 import { supabase } from '@/services/supabase';
-import { Save, Loader2 } from 'lucide-vue-next';
+import { Save, Loader2, ClipboardList } from 'lucide-vue-next';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
 import { APP_CONSTANTS } from '@/constants/appConstants';
 import { useTransactionStore } from '@/stores/transactionStore';
@@ -18,6 +18,10 @@ import KvedSelector from '@/components/settings/KvedSelector.vue';
 const txStore = useTransactionStore();
 const taxRulesStore = useTaxRulesStore();
 const router = useRouter();
+
+function goFopQuiz() {
+  router.push({ name: 'fop-group-quiz' });
+}
 const notificationStore = useNotificationStore();
 
 const isLoading = ref(false);
@@ -192,9 +196,20 @@ onMounted(() => {
 <template>
   <div class="max-w-4xl mx-auto p-4 sm:p-8 animate-fade-in font-sans">
     <header class="mb-8 sm:mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-      <div>
-        <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
-        <p class="text-gray-500 font-medium font-bold">Керування профілем та податковими параметрами</p>
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between w-full">
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
+          <p class="text-gray-500 font-medium font-bold">Керування профілем та податковими параметрами</p>
+        </div>
+        <button
+          v-if="profile.is_fop"
+          type="button"
+          class="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+          @click="goFopQuiz"
+        >
+          <ClipboardList :size="18" stroke-width="2.5" />
+          Квіз: підібрати групу ФОП
+        </button>
       </div>
     </header>
 

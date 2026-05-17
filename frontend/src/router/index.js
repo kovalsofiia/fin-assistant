@@ -6,6 +6,7 @@ import OnboardingView from '@/views/OnboardingView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import DashboardView from '@/views/DashboardView.vue';
 import AnalyticsView from '@/views/AnalyticsView.vue';
+import FopGroupQuizView from '@/views/FopGroupQuizView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -37,6 +38,12 @@ const router = createRouter({
       path: '/analytics',
       name: 'analytics',
       component: AnalyticsView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/quiz/fop-group',
+      name: 'fop-group-quiz',
+      component: FopGroupQuizView,
       meta: { requiresAuth: true }
     },
     {
