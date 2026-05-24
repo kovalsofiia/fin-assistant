@@ -34,18 +34,26 @@ export const APP_CONSTANTS = {
     MAX_DESC_LENGTH: 150,
   },
 
-  // Податкові константи за замовчуванням (2025)
+  // Податкові константи (fallback; джерело істини — GET /tax/rules)
   TAX_DEFAULTS: {
-    ESV_VALUE: 1760.0,
-    SINGLE_TAX_G1: 302.80,
-    SINGLE_TAX_G2: 1600.0,
-    FIXED_MILITARY_TAX: 800.0,
-    LIMIT_G1: 1336000,
-    LIMIT_G2: 5920000,
-    LIMIT_G3: 9336000,
+    MIN_WAGE: 8650.0,
+    ESV_VALUE: 1902.34,
+    SINGLE_TAX_G1: 332.8,
+    SINGLE_TAX_G2: 1729.4,
+    FIXED_MILITARY_TAX: 864.7,
+    LIMIT_G1: 1_444_049,
+    LIMIT_G2: 7_211_598,
+    LIMIT_G3: 10_091_049,
+    LIMIT_G1_MZP_UNITS: 167,
+    LIMIT_G2_MZP_UNITS: 834,
+    LIMIT_G3_MZP_UNITS: 1167,
     INCOME_TAX_G3: 5.0,
     INCOME_TAX_G3_VAT: 3.0,
     MILITARY_TAX_PERCENT: 1.0,
+    G4_RATE_ARABLE: 0.95,
+    G4_RATE_WATER: 2.43,
+    G4_RATE_CLOSED_SOIL: 6.33,
+    VAT_SUPPLY_THRESHOLD: 1_000_000,
   },
 
   /** Орієнтовні строки сплати для підказок у віджеті податків */

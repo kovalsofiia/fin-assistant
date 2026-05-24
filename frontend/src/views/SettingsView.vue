@@ -22,6 +22,10 @@ const router = useRouter();
 function goFopQuiz() {
   router.push({ name: 'fop-group-quiz' });
 }
+
+function goTaxRulesAdmin() {
+  router.push({ name: 'admin-tax-rules' });
+}
 const notificationStore = useNotificationStore();
 
 const isLoading = ref(false);
@@ -72,6 +76,8 @@ const loadData = async () => {
     } catch (e) {
       console.warn("Profile not found or error", e);
     }
+
+    await taxRulesStore.checkAdmin();
 
     if (profile.value.is_fop) {
       try {
@@ -201,15 +207,25 @@ onMounted(() => {
           <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight mb-2">Налаштування</h1>
           <p class="text-gray-500 font-medium font-bold">Керування профілем та податковими параметрами</p>
         </div>
-        <button
-          v-if="profile.is_fop"
-          type="button"
-          class="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
-          @click="goFopQuiz"
-        >
-          <ClipboardList :size="18" stroke-width="2.5" />
-          Квіз: підібрати групу ФОП
-        </button>
+        <div class="flex flex-wrap gap-2 shrink-0">
+          <button
+            v-if="profile.is_fop"
+            type="button"
+            class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+            @click="goFopQuiz"
+          >
+            <ClipboardList :size="18" stroke-width="2.5" />
+            Квіз: підібрати групу ФОП
+          </button>
+          <button
+            v-if="taxRulesStore.isAdmin"
+            type="button"
+            class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-800 text-white font-black text-sm hover:bg-slate-900 transition-all"
+            @click="goTaxRulesAdmin"
+          >
+            Податкові правила (адмін)
+          </button>
+        </div>
       </div>
     </header>
 

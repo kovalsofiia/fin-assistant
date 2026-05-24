@@ -5,8 +5,8 @@ from models.setting import FopSettingsBase
 
 from core.database import supabase
 from core.constants import (
-    SINGLE_TAX_G1, 
-    SINGLE_TAX_G2, 
+    SINGLE_TAX_G1,
+    SINGLE_TAX_G2,
     FIXED_MILITARY_TAX,
     MIN_ESV,
     MIN_ESV_2025,
@@ -17,8 +17,9 @@ from core.constants import (
     DEFAULT_G3_RATE,
     DEFAULT_G3_VAT_RATE,
     DEFAULT_G4_RATE,
-    DEFAULT_MILITARY_RATE
+    DEFAULT_MILITARY_RATE,
 )
+from core.tax_rules_defaults import default_tax_rules_for_period
 
 ESV_MONTHLY_2025 = MIN_ESV # Alias for clarity
 
@@ -96,21 +97,17 @@ class TaxService:
         if cache_key in TaxService._rules_cache:
             return TaxService._rules_cache[cache_key]
 
-        # Базові константи як фундамент
-        fallback_rules = {
-            "year": year,
-            "month": month,
-            "esv_value": MIN_ESV_2025 if year < 2026 else MIN_ESV_2026,
-            "single_tax_g1": SINGLE_TAX_G1,
-            "single_tax_g2": SINGLE_TAX_G2,
-            "fixed_military_tax": FIXED_MILITARY_TAX,
-            "limit_g1": LIMIT_G1,
-            "limit_g2": LIMIT_G2,
-            "limit_g3": LIMIT_G3,
-            "income_tax_percent": None, # Will be determined by group-specific defaults
-            "military_tax_percent": DEFAULT_MILITARY_RATE
-        }
-        
+        fallback_rules = default_tax_rules_for_period(int(year), int(month))
+        # Для років до 2026 — залишаємо старі fallback з constants
+        if year < 2026:
+            fallback_rules["esv_value"] = MIN_ESV_2025
+            fallback_rules["single_tax_g1"] = 302.80
+            fallback_rules["single_tax_g2"] = 1600.0
+            fallback_rules["fixed_military_tax"] = 800.0
+            fallback_rules["limit_g1"] = 1_336_000.0
+            fallback_rules["limit_g2"] = 5_920_000.0
+            fallback_rules["limit_g3"] = 9_336_000.0
+
         try:
             res = supabase.table("tax_rules")\
                 .select("*")\
@@ -119,12 +116,16 @@ class TaxService:
                 .execute()
             
             if res.data and len(res.data) > 0:
-                # Зливаємо отримані дані з дефолтами (на випадок якщо в БД NULL в окремих полях)
                 db_rule = res.data[0]
-                for key in fallback_rules:
+                for key, val in list(fallback_rules.items()):
                     if key in db_rule and db_rule[key] is not None:
-                        fallback_rules[key] = float(db_rule[key])
-                
+                        if key in ("limit_g1_mzp_units", "limit_g2_mzp_units", "limit_g3_mzp_units"):
+                            fallback_rules[key] = int(db_rule[key])
+                        else:
+                            fallback_rules[key] = float(db_rule[key])
+                if db_rule.get("id"):
+                    fallback_rules["id"] = str(db_rule["id"])
+
                 TaxService._rules_cache[cache_key] = fallback_rules
                 return fallback_rules
                 
@@ -141,31 +142,24 @@ class TaxService:
         Отримує відсоткові ставки податків (Єдиний та Військовий) з урахуванням оверрайдів.
         """
         # Дефолтні значення на основі групи та ПДВ
+        rules = TaxService.get_tax_rules(year, month)
         default_income_rate = DEFAULT_G3_RATE
         if settings.fop_group == FopGroup.GROUP_3:
-            default_income_rate = DEFAULT_G3_VAT_RATE if settings.is_vat_payer else DEFAULT_G3_RATE
+            if settings.is_vat_payer:
+                default_income_rate = float(rules.get("income_tax_percent_vat") or DEFAULT_G3_VAT_RATE)
+            else:
+                default_income_rate = float(rules.get("income_tax_percent") or DEFAULT_G3_RATE)
         elif settings.fop_group == FopGroup.GROUP_4:
-            default_income_rate = DEFAULT_G4_RATE
+            default_income_rate = float(rules.get("g4_rate_arable") or DEFAULT_G4_RATE)
             
-        default_military_rate = DEFAULT_MILITARY_RATE
-
         rates = {
             "income_tax_percent": default_income_rate,
-            "military_tax_percent": default_military_rate,
-            "fixed_military_tax": FIXED_MILITARY_TAX
+            "military_tax_percent": float(rules.get("military_tax_percent") or DEFAULT_MILITARY_RATE),
+            "fixed_military_tax": float(rules.get("fixed_military_tax") or FIXED_MILITARY_TAX),
         }
 
         try:
-            # 1. Глобальні правила (Пріорітет №2 - якщо система змінить дефолти для всіх)
-            rules = TaxService.get_tax_rules(year, month)
-            if rules.get("income_tax_percent") is not None:
-                rates["income_tax_percent"] = rules["income_tax_percent"]
-            if rules.get("military_tax_percent") is not None:
-                rates["military_tax_percent"] = rules["military_tax_percent"]
-            if rules.get("fixed_military_tax") is not None:
-                rates["fixed_military_tax"] = rules["fixed_military_tax"]
-
-            # 2. User Overrides (Пріорітет №1)
+            # User Overrides (Пріоритет №1)
             user_override = supabase.table("user_tax_overrides")\
                 .select("*")\
                 .eq("user_id", user_id)\

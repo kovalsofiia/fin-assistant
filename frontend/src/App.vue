@@ -6,7 +6,6 @@ import { useNotificationStore } from '@/stores/notificationStore';
 import { 
   Wallet, 
   LayoutDashboard, 
-  Receipt, 
   Settings, 
   Menu, 
   X, 

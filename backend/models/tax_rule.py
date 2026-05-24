@@ -1,34 +1,50 @@
-from pydantic import BaseModel
 from typing import Optional
+from pydantic import BaseModel, Field
 
-class EsvRate(BaseModel):
-    year: int
-    month: int
-    value: float
 
-class TaxRule(BaseModel):
-    year: int
-    month: int
-    esv_value: float
-    single_tax_g1: float
-    single_tax_g2: float
-    fixed_military_tax: float
-    limit_g1: float
-    limit_g2: float
-    limit_g3: float
-    income_tax_percent: Optional[float] = None
-    military_tax_percent: Optional[float] = None
+class TaxRuleBase(BaseModel):
+    year: int = Field(..., ge=2020, le=2100)
+    month: int = Field(..., ge=1, le=12)
+    min_wage: Optional[float] = Field(None, ge=0)
+    esv_value: Optional[float] = Field(None, ge=0)
+    single_tax_g1: Optional[float] = Field(None, ge=0)
+    single_tax_g2: Optional[float] = Field(None, ge=0)
+    fixed_military_tax: Optional[float] = Field(None, ge=0)
+    limit_g1: Optional[float] = Field(None, ge=0)
+    limit_g2: Optional[float] = Field(None, ge=0)
+    limit_g3: Optional[float] = Field(None, ge=0)
+    limit_g1_mzp_units: Optional[int] = Field(None, ge=0)
+    limit_g2_mzp_units: Optional[int] = Field(None, ge=0)
+    limit_g3_mzp_units: Optional[int] = Field(None, ge=0)
+    income_tax_percent: Optional[float] = Field(None, ge=0, le=100)
+    income_tax_percent_vat: Optional[float] = Field(None, ge=0, le=100)
+    military_tax_percent: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_arable: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_water: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_closed_soil: Optional[float] = Field(None, ge=0, le=100)
+    vat_supply_threshold: Optional[float] = Field(None, ge=0)
 
-class UserEsvOverride(BaseModel):
-    user_id: str
-    year: int
-    month: int
-    value: float
 
-class UserTaxOverride(BaseModel):
-    user_id: str
-    year: int
-    month: int
-    income_tax_percent: Optional[float] = None
-    military_tax_percent: Optional[float] = None
-    fixed_military_tax: Optional[float] = None
+class TaxRuleUpdate(BaseModel):
+    min_wage: Optional[float] = Field(None, ge=0)
+    esv_value: Optional[float] = Field(None, ge=0)
+    single_tax_g1: Optional[float] = Field(None, ge=0)
+    single_tax_g2: Optional[float] = Field(None, ge=0)
+    fixed_military_tax: Optional[float] = Field(None, ge=0)
+    limit_g1: Optional[float] = Field(None, ge=0)
+    limit_g2: Optional[float] = Field(None, ge=0)
+    limit_g3: Optional[float] = Field(None, ge=0)
+    limit_g1_mzp_units: Optional[int] = Field(None, ge=0)
+    limit_g2_mzp_units: Optional[int] = Field(None, ge=0)
+    limit_g3_mzp_units: Optional[int] = Field(None, ge=0)
+    income_tax_percent: Optional[float] = Field(None, ge=0, le=100)
+    income_tax_percent_vat: Optional[float] = Field(None, ge=0, le=100)
+    military_tax_percent: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_arable: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_water: Optional[float] = Field(None, ge=0, le=100)
+    g4_rate_closed_soil: Optional[float] = Field(None, ge=0, le=100)
+    vat_supply_threshold: Optional[float] = Field(None, ge=0)
+
+
+class TaxRuleResponse(TaxRuleBase):
+    id: Optional[str] = None

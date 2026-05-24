@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import date as date_type, timedelta
-from typing import Optional
+from typing import Optional, List
+from fastapi.encoders import jsonable_encoder
+
 from services.tax_service import TaxService
 from models.setting import FopSettingsBase
 from models.common import ReportingPeriod
+from models.tax_rule import TaxRuleUpdate, TaxRuleResponse
 from core.database import supabase
 from core.auth import get_current_user_id
+from core.admin_auth import require_tax_rules_admin
+from core.tax_rules_defaults import default_tax_rules_for_period, TAX_RULES_NUMERIC_KEYS
 
 router = APIRouter(prefix="/tax", tags=["Tax"])
 
@@ -79,13 +84,131 @@ def _collect_annual_income(current_user_id: str, year: int) -> float:
         .execute()
     return sum(float(tx.get("transaction_amount", 0) or 0) for tx in (tx_res.data or []))
 
+
+def _invalidate_rules_cache():
+    TaxService._rules_cache.clear()
+
+
+@router.get("/rules")
+def get_tax_rules(year: int, month: int):
+    """Публічне читання правил для періоду (джерело істини для фронту та квізу)."""
+    try:
+        return TaxService.get_tax_rules(year, month)
+    except Exception as e:
+        print(f"Error in /tax/rules: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося завантажити податкові правила")
+
+
+@router.get("/rules/admin/list")
+def list_tax_rules_admin(_admin_id: str = Depends(require_tax_rules_admin)):
+    """Усі записи tax_rules для адмін-панелі."""
+    try:
+        res = (
+            supabase.table("tax_rules")
+            .select("*")
+            .order("year", desc=True)
+            .order("month", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        print(f"Admin list tax rules: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося завантажити список правил")
+
+
+@router.put("/rules/admin/{rule_id}")
+def update_tax_rule_admin(
+    rule_id: str,
+    payload: TaxRuleUpdate,
+    _admin_id: str = Depends(require_tax_rules_admin),
+):
+    try:
+        update_data = jsonable_encoder(payload.dict(exclude_unset=True))
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Немає полів для оновлення")
+
+        res = (
+            supabase.table("tax_rules")
+            .update(update_data)
+            .eq("id", rule_id)
+            .execute()
+        )
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Запис не знайдено")
+
+        _invalidate_rules_cache()
+        return res.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Admin update tax rule: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося оновити правило")
+
+
+@router.post("/rules/admin/seed/{year}")
+def seed_tax_rules_year(
+    year: int,
+    _admin_id: str = Depends(require_tax_rules_admin),
+):
+    """Створити/оновити 12 місяців року дефолтними значеннями (2026+ з tax_rules_defaults)."""
+    if year < 2020 or year > 2100:
+        raise HTTPException(status_code=400, detail="Некоректний рік")
+
+    created = []
+    try:
+        for month in range(1, 13):
+            row = default_tax_rules_for_period(year, month)
+            existing = (
+                supabase.table("tax_rules")
+                .select("id")
+                .eq("year", year)
+                .eq("month", month)
+                .execute()
+            )
+            if existing.data:
+                res = (
+                    supabase.table("tax_rules")
+                    .update({k: row[k] for k in TAX_RULES_NUMERIC_KEYS})
+                    .eq("id", existing.data[0]["id"])
+                    .execute()
+                )
+            else:
+                res = supabase.table("tax_rules").insert(row).execute()
+            if res.data:
+                created.append(res.data[0])
+
+        _invalidate_rules_cache()
+        return {"message": f"Оновлено {len(created)} періодів для {year}", "records": created}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Seed tax rules: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося заповнити правила")
+
+
+@router.get("/rules/admin/me")
+def tax_rules_admin_check(current_user_id: str = Depends(get_current_user_id)):
+    """Чи має поточний користувач право редагувати tax_rules."""
+    from core.admin_auth import _allowed_admin_emails
+
+    allowed = _allowed_admin_emails()
+    if not allowed:
+        return {"is_admin": False, "reason": "TAX_RULES_ADMIN_EMAILS не налаштовано"}
+    try:
+        user_res = supabase.auth.admin.get_user_by_id(current_user_id)
+        email = (getattr(getattr(user_res, "user", None), "email", None) or "").lower()
+        return {"is_admin": email in allowed, "email": email}
+    except Exception:
+        return {"is_admin": False}
+
+
 @router.get("/calculate")
 def calculate_tax(
     current_user_id: str = Depends(get_current_user_id),
     annual_income: float = 0.0,
     monthly_income: float = 0.0,
     period: ReportingPeriod = ReportingPeriod.MONTH,
-    calc_date: Optional[date_type] = None
+    calc_date: Optional[date_type] = None,
 ):
     """
     Розрахунок податків на основі налаштувань користувача та доходу.
@@ -93,37 +216,35 @@ def calculate_tax(
     try:
         effective_calc_date = calc_date or date_type.today()
 
-        # 1. Отримуємо налаштування ФОП
         settings_res = supabase.table("fop_settings").select("*").eq("user_id", current_user_id).execute()
         if not settings_res.data:
             raise HTTPException(status_code=404, detail="Налаштування ФОП не знайдено")
-        
+
         settings_data = settings_res.data[0]
         settings = FopSettingsBase(**settings_data)
-        
-        # 2. Рахуємо дохід за обраний період напряму з транзакцій (джерело істини для історичних ставок).
-        period_income_total, income_by_month = _collect_period_income(current_user_id, period, effective_calc_date)
+
+        period_income_total, income_by_month = _collect_period_income(
+            current_user_id, period, effective_calc_date
+        )
         annual_income_value = _collect_annual_income(current_user_id, effective_calc_date.year)
 
-        # Legacy fallback, якщо історичні транзакції відсутні.
         if period_income_total <= 0 and monthly_income > 0:
             months_to_calc = _period_months(period)
             period_income_total = monthly_income if months_to_calc == 1 else (monthly_income * months_to_calc)
             if months_to_calc == 1:
-                income_by_month = {f"{effective_calc_date.year}-{effective_calc_date.month:02d}": period_income_total}
+                income_by_month = {
+                    f"{effective_calc_date.year}-{effective_calc_date.month:02d}": period_income_total
+                }
 
         if annual_income_value <= 0 and annual_income > 0:
             annual_income_value = annual_income
 
-        # 3. Перевіряємо ліміти та обмеження
         errors = TaxService.verify_group_restrictions(settings, annual_income_value)
         if errors:
             raise HTTPException(status_code=400, detail={"errors": errors})
-            
-        # 4. Отримуємо попередження
+
         warnings = TaxService.get_warnings(settings, annual_income_value)
-        
-        # 5. Рахуємо податки.
+
         taxes = TaxService.calculate_taxes(
             current_user_id,
             settings,
@@ -132,24 +253,13 @@ def calculate_tax(
             effective_calc_date,
             income_by_month=income_by_month,
         )
-        
+
         return {
             "taxes": taxes,
             "warnings": warnings,
         }
     except Exception as e:
-        if isinstance(e, HTTPException): raise e
+        if isinstance(e, HTTPException):
+            raise e
         print(f"Tax Calculation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/rules")
-def get_tax_rules(year: int, month: int):
-    """
-    Повертає глобальні правила оподаткування для вказаного періоду.
-    """
-    try:
-        rules = TaxService.get_tax_rules(year, month)
-        return rules
-    except Exception as e:
-        print(f"Error in /tax/rules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Помилка розрахунку податків")

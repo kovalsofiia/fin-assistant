@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ArrowLeft,
@@ -11,31 +11,28 @@ import {
 } from 'lucide-vue-next';
 import {
   evaluateFopGroupQuiz,
-  LIMITS_ANNUAL_UAH_2026,
-  GROUP1_INCOME_LIMIT_MIN_WAGE_UNITS_2026,
-  GROUP2_INCOME_LIMIT_MIN_WAGE_UNITS_2026,
   GROUP2_CONTEXT_NOTE,
   GROUP2_EMPLOYER_PAYROLL_NOTE,
-  GROUP3_INCOME_LIMIT_MIN_WAGE_UNITS_2026,
   GROUP3_CONTEXT_NOTE,
   GROUP3_FX_ZED_NOTE,
   GROUP3_ZERO_INCOME_NOTE,
-  GROUP3_EP_PERCENT_NON_VAT,
-  GROUP3_EP_PERCENT_VAT_PAYER,
-  GROUP3_MILITARY_PERCENT_OF_INCOME,
   GROUP4_CONTEXT_NOTE,
   GROUP4_EP_FROM_NORMATIVE_NOTE,
-  GROUP4_NORMATIVE_RATE_PCT,
   GROUP4_REPORTING_NOTE,
-  GROUP4_MILITARY_FIXED_MONTHLY_UAH,
-  GROUP4_MILITARY_FIXED_ANNUAL_UAH,
-  MONTHLY_FIXED_UAH_2026,
-  ESV_MONTHLY_UAH_2026,
-  VAT_SUPPLY_THRESHOLD_UAH,
   QUIZ_LEGAL_NOTE,
 } from '@/utils/fopGroupQuizEngine';
+import { useTaxRulesStore } from '@/stores/taxRulesStore';
 
 const router = useRouter();
+const taxRulesStore = useTaxRulesStore();
+
+onMounted(() => {
+  const now = new Date();
+  taxRulesStore.fetchRules(now.getFullYear(), now.getMonth() + 1);
+});
+
+const quizCtx = computed(() => taxRulesStore.quizCtx);
+const g4MilitaryAnnual = computed(() => quizCtx.value.militaryFixedMonthly * 12);
 
 const STEP_TITLES = {
   income: 'Проєктований дохід',
@@ -87,7 +84,7 @@ const progressPct = computed(() =>
   Math.round(((step.value + 1) / Math.max(1, totalStepsCount.value)) * 100)
 );
 
-const result = computed(() => evaluateFopGroupQuiz(answers));
+const result = computed(() => evaluateFopGroupQuiz(answers, quizCtx.value));
 
 const isResultStep = computed(() => currentStepId.value === 'result');
 
@@ -171,9 +168,9 @@ function formatUah(n) {
       <div class="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-sm text-amber-900 leading-relaxed flex gap-3">
         <HelpCircle class="shrink-0 mt-0.5" :size="18" />
         <span>
-          Ліміти 2026: 1 група — {{ GROUP1_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП (до {{ LIMITS_ANNUAL_UAH_2026.g1.toLocaleString('uk-UA') }} грн);
-          2 група — {{ GROUP2_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП (до {{ LIMITS_ANNUAL_UAH_2026.g2.toLocaleString('uk-UA') }} грн);
-          3 група — {{ GROUP3_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП (до {{ LIMITS_ANNUAL_UAH_2026.g3.toLocaleString('uk-UA') }} грн).
+          Ліміти: 1 група — {{ quizCtx.limitMzpUnits.g1 }} МЗП (до {{ quizCtx.limits.g1.toLocaleString('uk-UA') }} грн);
+          2 група — {{ quizCtx.limitMzpUnits.g2 }} МЗП (до {{ quizCtx.limits.g2.toLocaleString('uk-UA') }} грн);
+          3 група — {{ quizCtx.limitMzpUnits.g3 }} МЗП (до {{ quizCtx.limits.g3.toLocaleString('uk-UA') }} грн).
         </span>
       </div>
     </section>
@@ -242,9 +239,9 @@ function formatUah(n) {
       <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
         <input v-model="answers.expectsVatRegistration" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
         <span>
-          <span class="font-black text-gray-900 block">Очікую реєстрацію платником ПДВ або постачання понад поріг (~{{ VAT_SUPPLY_THRESHOLD_UAH.toLocaleString('uk-UA') }} грн за 12 міс)</span>
+          <span class="font-black text-gray-900 block">Очікую реєстрацію платником ПДВ або постачання понад поріг (~{{ quizCtx.vatThreshold.toLocaleString('uk-UA') }} грн за 12 міс)</span>
           <span class="text-sm text-gray-500">
-            Для 3 групи в квізі: неплатник ПДВ — ЄП {{ GROUP3_EP_PERCENT_NON_VAT }}% від доходу; платник ПДВ — ЄП {{ GROUP3_EP_PERCENT_VAT_PAYER }}% від доходу за квартал + ПДВ окремо в обліку.
+            Для 3 групи в квізі: неплатник ПДВ — ЄП {{ quizCtx.g3.epNonVat }}% від доходу; платник ПДВ — ЄП {{ quizCtx.g3.epVat }}% від доходу за квартал + ПДВ окремо в обліку.
           </span>
         </span>
       </label>
@@ -261,11 +258,11 @@ function formatUah(n) {
         </p>
         <p>
           Наймані працівники для цієї групи <strong>не допускаються</strong>. Максимальний річний дохід 2026:
-          <strong>{{ GROUP1_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП</strong> (до {{ LIMITS_ANNUAL_UAH_2026.g1.toLocaleString('uk-UA') }} грн).
+          <strong>{{ quizCtx.limitMzpUnits.g1 }} МЗП</strong> (до {{ quizCtx.limits.g1.toLocaleString('uk-UA') }} грн).
         </p>
         <p class="text-xs text-slate-500 border-t border-slate-200 pt-3">
-          Податки (орієнтир): ЄП фіксовано {{ MONTHLY_FIXED_UAH_2026.g1.single }} грн/міс; військовий збір
-          {{ MONTHLY_FIXED_UAH_2026.g1.military }} грн/міс; ЄСВ {{ ESV_MONTHLY_UAH_2026 }} грн/міс (22% від МЗП).
+          Податки (орієнтир): ЄП фіксовано {{ quizCtx.monthlyFixed.g1.single }} грн/міс; військовий збір
+          {{ quizCtx.monthlyFixed.g1.military }} грн/міс; ЄСВ {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП).
         </p>
       </div>
       <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:border-indigo-100 transition-colors">
@@ -286,7 +283,7 @@ function formatUah(n) {
         </span>
       </label>
       <p class="text-xs text-gray-400">
-        Для 1–2 та 4 груп у квізі ЄСВ усе одно врахований типово ({{ ESV_MONTHLY_UAH_2026 }} грн/міс).
+        Для 1–2 та 4 груп у квізі ЄСВ усе одно врахований типово ({{ quizCtx.esvMonthly }} грн/міс).
       </p>
     </section>
 
@@ -319,9 +316,9 @@ function formatUah(n) {
         v-model="answers.g4LandType"
         class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-emerald-500 font-bold text-gray-900 outline-none bg-white"
       >
-        <option value="arable_pasture">Рілля, сіножаті, пасовища — {{ GROUP4_NORMATIVE_RATE_PCT.arable_pasture }}%</option>
-        <option value="water">Землі водного фонду — {{ GROUP4_NORMATIVE_RATE_PCT.water }}%</option>
-        <option value="closed_soil">Закритий ґрунт (теплиці тощо) — {{ GROUP4_NORMATIVE_RATE_PCT.closed_soil }}%</option>
+        <option value="arable_pasture">Рілля, сіножаті, пасовища — {{ quizCtx.g4Rates.arable_pasture }}%</option>
+        <option value="water">Землі водного фонду — {{ quizCtx.g4Rates.water }}%</option>
+        <option value="closed_soil">Закритий ґрунт (теплиці тощо) — {{ quizCtx.g4Rates.closed_soil }}%</option>
       </select>
       <label class="block text-xs font-bold text-gray-500 uppercase">Площа сільськогосподарських угідь (га)</label>
       <input
@@ -340,8 +337,8 @@ function formatUah(n) {
         class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-bold outline-none"
       >
       <p class="text-xs text-gray-500 leading-relaxed border-t border-gray-100 pt-4">
-        <strong>Військовий збір (орієнтир):</strong> фіксовано {{ GROUP4_MILITARY_FIXED_MONTHLY_UAH }} грн/міс (10% від МЗП), річний еквівалент
-        {{ GROUP4_MILITARY_FIXED_ANNUAL_UAH.toLocaleString('uk-UA') }} грн. <strong>ЄСВ ФОП:</strong> {{ ESV_MONTHLY_UAH_2026 }} грн/міс на загальних підставах.
+        <strong>Військовий збір (орієнтир):</strong> фіксовано {{ quizCtx.militaryFixedMonthly }} грн/міс (10% від МЗП), річний еквівалент
+        {{ g4MilitaryAnnual.toLocaleString('uk-UA') }} грн. <strong>ЄСВ ФОП:</strong> {{ quizCtx.esvMonthly }} грн/міс на загальних підставах.
       </p>
       <p class="text-xs text-gray-500">{{ GROUP4_REPORTING_NOTE }}</p>
     </section>
@@ -396,25 +393,25 @@ function formatUah(n) {
 
       <div class="p-5 rounded-2xl bg-gray-50 border border-gray-100 text-xs text-gray-600 leading-relaxed space-y-2">
         <p>
-          <strong>1 група (орієнтир 2026):</strong> ЄП {{ MONTHLY_FIXED_UAH_2026.g1.single }} грн/міс (фіксована ставка незалежно від доходу в межах ліміту),
-          ВЗ {{ MONTHLY_FIXED_UAH_2026.g1.military }} грн/міс; разом із ЄСВ модель квізу рахує річну суму ЄП+ВЗ+ЄСВ.
+          <strong>1 група:</strong> ЄП {{ quizCtx.monthlyFixed.g1.single }} грн/міс (фіксована ставка незалежно від доходу в межах ліміту),
+          ВЗ {{ quizCtx.monthlyFixed.g1.military }} грн/міс; разом із ЄСВ модель квізу рахує річну суму ЄП+ВЗ+ЄСВ.
         </p>
         <p>
-          <strong>2 група (орієнтир 2026):</strong> ліміт доходу {{ GROUP2_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП (до
-          {{ LIMITS_ANNUAL_UAH_2026.g2.toLocaleString('uk-UA') }} грн). ЄП фіксовано {{ MONTHLY_FIXED_UAH_2026.g2.single }} грн/міс (20% від
-          прожиткового мінімуму за правилами ПКУ), незалежно від доходу в межах ліміту; ВЗ {{ MONTHLY_FIXED_UAH_2026.g2.military }} грн/міс (10%
-          від МЗП). ЄСВ самого ФОП — {{ ESV_MONTHLY_UAH_2026 }} грн/міс (22% від МЗП). Для найманих: утримання ПДФО 18%, ВЗ 5% із зарплати та нарахування ЄСВ 22% на фонд оплати праці (не входить у число в таблиці «податки ФОП» вище).
+          <strong>2 група:</strong> ліміт доходу {{ quizCtx.limitMzpUnits.g2 }} МЗП (до
+          {{ quizCtx.limits.g2.toLocaleString('uk-UA') }} грн). ЄП фіксовано {{ quizCtx.monthlyFixed.g2.single }} грн/міс (20% від
+          прожиткового мінімуму за правилами ПКУ), незалежно від доходу в межах ліміту; ВЗ {{ quizCtx.monthlyFixed.g2.military }} грн/міс (10%
+          від МЗП). ЄСВ самого ФОП — {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП). Для найманих: утримання ПДФО 18%, ВЗ 5% із зарплати та нарахування ЄСВ 22% на фонд оплати праці (не входить у число в таблиці «податки ФОП» вище).
         </p>
         <p class="text-xs text-gray-500"><strong>Модель квізу</strong> порівнює лише фіксовані платежі самого ФОП + типовий ЄСВ ФОП; зарплатні утримання не додаються до суми в таблиці вище.</p>
         <p>
-          <strong>3 група (орієнтир 2026):</strong> ліміт {{ GROUP3_INCOME_LIMIT_MIN_WAGE_UNITS_2026 }} МЗП (до {{ LIMITS_ANNUAL_UAH_2026.g3.toLocaleString('uk-UA') }} грн).
-          ЄП — {{ GROUP3_EP_PERCENT_NON_VAT }}% від доходу (неплатник ПДВ) або {{ GROUP3_EP_PERCENT_VAT_PAYER }}% від доходу за квартал + ПДВ (платник ПДВ); військовий збір {{ GROUP3_MILITARY_PERCENT_OF_INCOME }}% від доходу (у квізі — від річного проєкту).
-          ЄСВ ФОП — {{ ESV_MONTHLY_UAH_2026 }} грн/міс (22% від МЗП).
+          <strong>3 група:</strong> ліміт {{ quizCtx.limitMzpUnits.g3 }} МЗП (до {{ quizCtx.limits.g3.toLocaleString('uk-UA') }} грн).
+          ЄП — {{ quizCtx.g3.epNonVat }}% від доходу (неплатник ПДВ) або {{ quizCtx.g3.epVat }}% від доходу за квартал + ПДВ (платник ПДВ); військовий збір {{ quizCtx.g3.militaryPct }}% від доходу (у квізі — від річного проєкту).
+          ЄСВ ФОП — {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП).
         </p>
         <p class="text-xs text-gray-500"><strong>Без доходу:</strong> {{ GROUP3_ZERO_INCOME_NOTE }}</p>
         <p>
           <strong>4 група (орієнтир 2026):</strong> лише сільгосп; доступ прив’язаний до земельних ділянок (угідь, водний фонд), ЄП від нормативної грошової оцінки × площа × ставку (обраний тип:
-          {{ GROUP4_NORMATIVE_RATE_PCT[answers.g4LandType] ?? GROUP4_NORMATIVE_RATE_PCT.arable_pasture }}%). ВЗ фіксовано {{ GROUP4_MILITARY_FIXED_MONTHLY_UAH }} грн/міс (річний еквівалент {{ GROUP4_MILITARY_FIXED_ANNUAL_UAH.toLocaleString('uk-UA') }} грн); ЄСВ — {{ ESV_MONTHLY_UAH_2026 }} грн/міс. {{ GROUP4_REPORTING_NOTE }}
+          {{ quizCtx.g4Rates[answers.g4LandType] ?? quizCtx.g4Rates.arable_pasture }}%). ВЗ фіксовано {{ quizCtx.militaryFixedMonthly }} грн/міс (річний еквівалент {{ g4MilitaryAnnual.toLocaleString('uk-UA') }} грн); ЄСВ — {{ quizCtx.esvMonthly }} грн/міс. {{ GROUP4_REPORTING_NOTE }}
         </p>
         <p v-if="result.fxNote">{{ result.fxNote }}</p>
         <p v-if="result.zedNote">{{ result.zedNote }}</p>

@@ -26,15 +26,15 @@ MIN_ESV_2025 = 1760.0
 MIN_ESV_2026 = 1902.34   # Projected
 MIN_ESV = MIN_ESV_2025
 
-# Fixed Taxes for Groups 1 & 2
-SINGLE_TAX_G1 = 302.80
-SINGLE_TAX_G2 = 1600.0
-FIXED_MILITARY_TAX = 800.0
+# Fixed Taxes for Groups 1 & 2 (орієнтир 2026; джерело істини — tax_rules у БД)
+SINGLE_TAX_G1 = 332.80
+SINGLE_TAX_G2 = 1729.40
+FIXED_MILITARY_TAX = 864.70
 
-# Income Limit Constants 2025
-LIMIT_G1 = 1336000.0 
-LIMIT_G2 = 5920000.0 
-LIMIT_G3 = 9336000.0 
+# Income Limit Constants (орієнтир 2026)
+LIMIT_G1 = 1_444_049.0
+LIMIT_G2 = 7_211_598.0
+LIMIT_G3 = 10_091_049.0 
 # Default Tax Rates %
 DEFAULT_G3_RATE = 5.0
 DEFAULT_G3_VAT_RATE = 3.0
