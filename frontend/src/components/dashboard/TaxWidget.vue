@@ -35,13 +35,25 @@ const props = defineProps({
   periodLabel: {
     type: String,
     default: 'обраний період'
+  },
+  /** Лише розбивка (ЄП, ВЗ, ЄСВ) — для згорнутого блоку на мобільному */
+  embedded: {
+    type: Boolean,
+    default: false
+  },
+  showNote: {
+    type: Boolean,
+    default: true
   }
 });
 </script>
 
 <template>
-  <div class="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 h-full flex flex-col">
-    <div class="flex flex-col mb-4">
+  <div
+    class="h-full flex flex-col"
+    :class="embedded ? '' : 'bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8'"
+  >
+    <div v-if="!embedded" class="flex flex-col mb-4">
       <h2 class="text-xl font-black text-gray-900 flex items-center gap-3">
         <Calculator class="w-6 h-6 text-indigo-600" />
         Податковий розрахунок
@@ -52,20 +64,23 @@ const props = defineProps({
     </div>
     
     <!-- Total Block -->
-    <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100">
-      <div class="flex justify-between items-center gap-3">
-        <span class="text-blue-800 font-medium text-sm uppercase tracking-wide min-w-0">
+    <div
+      v-if="!embedded"
+      class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100"
+    >
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-3">
+        <span class="text-blue-800 font-medium text-xs sm:text-sm uppercase tracking-wide min-w-0">
           Нараховано за {{ periodLabel }}
         </span>
         <SkeletonLoader v-if="loading" width="100px" height="24px" className="bg-blue-100 shrink-0" />
-        <span v-else class="text-xl font-bold text-blue-900 whitespace-nowrap shrink-0 tabular-nums">
+        <span v-else class="text-lg sm:text-xl font-bold text-blue-900 whitespace-nowrap shrink-0 tabular-nums">
           {{ (calculations.total || 0).toFixed(2) }}&nbsp;₴
         </span>
       </div>
     </div>
 
     <!-- Breakdown List -->
-    <div class="space-y-4 flex-1">
+    <div :class="embedded ? 'space-y-3' : 'space-y-4 flex-1'">
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
         <div class="flex flex-col">
           <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Єдиний податок</span>
@@ -73,7 +88,7 @@ const props = defineProps({
           <span class="text-sm font-bold text-gray-700" v-else>Фіксована ставка</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
-        <span v-else class="font-black text-gray-900">{{ (calculations.ep || 0).toFixed(2) }} ₴</span>
+        <span v-else class="font-black text-gray-900 whitespace-nowrap shrink-0 tabular-nums">{{ (calculations.ep || 0).toFixed(2) }}&nbsp;₴</span>
       </div>
       
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
@@ -83,7 +98,7 @@ const props = defineProps({
           <span class="text-sm font-bold text-gray-700" v-else>Фіксовано {{ rules.fixed_military_tax || 800 }} ₴</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
-        <span v-else class="font-black text-gray-900">{{ (calculations.vz || 0).toFixed(2) }} ₴</span>
+        <span v-else class="font-black text-gray-900 whitespace-nowrap shrink-0 tabular-nums">{{ (calculations.vz || 0).toFixed(2) }}&nbsp;₴</span>
       </div>
       
       <div class="flex justify-between items-center bg-gray-50/50 p-3 rounded-2xl border border-gray-100">
@@ -92,12 +107,16 @@ const props = defineProps({
           <span class="text-sm font-bold text-gray-700">Ставка (мін. {{ (rules.esv_value || APP_CONSTANTS.TAX_DEFAULTS.ESV_VALUE).toFixed(2) }})</span>
         </div>
         <SkeletonLoader v-if="loading" width="70px" height="18px" />
-        <span v-else class="font-black text-gray-900">{{ (calculations.esv || 0).toFixed(2) }} ₴</span>
+        <span v-else class="font-black text-gray-900 whitespace-nowrap shrink-0 tabular-nums">{{ (calculations.esv || 0).toFixed(2) }}&nbsp;₴</span>
       </div>
     </div>
     
     <!-- Note -->
-    <div class="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400 italic flex items-start gap-1.5">
+    <div
+      v-if="showNote"
+      class="mt-6 pt-4 border-t border-gray-100 text-[11px] sm:text-xs text-gray-400 italic flex items-start gap-1.5"
+      :class="{ 'mt-4 pt-3': embedded }"
+    >
       <Info class="w-3.5 h-3.5 mt-0.5 shrink-0" />
       <span>Розрахунок є орієнтовним: нарахування рахується за періодом, а фактична сплата виконується за календарем ДПС.</span>
     </div>

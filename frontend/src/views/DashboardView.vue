@@ -14,6 +14,7 @@ const taxRulesStore = useTaxRulesStore();
 // Тут я припускаю, що ми використовуємо їх прямо в шаблоні або імпортуємо оновлені версії.
 import StatCard from '@/components/dashboard/StatCard.vue';
 import TaxWidget from '@/components/dashboard/TaxWidget.vue';
+import DashboardCollapsibleSection from '@/components/dashboard/DashboardCollapsibleSection.vue';
 import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import SkeletonLoader from '@/components/common/SkeletonLoader.vue';
 import TransactionFormModal from '@/components/transactions/TransactionFormModal.vue';
@@ -228,16 +229,16 @@ const getCategoryName = (id) => {
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto p-4 sm:p-8 animate-fade-in space-y-8">
+  <div class="max-w-6xl mx-auto p-4 sm:p-8 animate-fade-in space-y-5 lg:space-y-8 pb-28 lg:pb-8">
     <!-- Header with Period Selector -->
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-2">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 lg:gap-6 mb-0 lg:mb-2">
       <div>
-        <h1 class="text-3xl font-black text-gray-900 tracking-tight">Фінансовий огляд</h1>
-        <p class="text-gray-500 font-medium mt-1">Огляд вашої активності за обраний період</p>
+        <h1 class="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">Фінансовий огляд</h1>
+        <p class="text-gray-500 font-medium mt-1 text-sm sm:text-base hidden sm:block">Огляд вашої активності за обраний період</p>
       </div>
 
       <!-- Month Selector -->
-      <div class="flex items-center bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm">
+      <div class="flex items-center bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-full sm:w-auto">
         <button 
           @click="changeMonth(-1)"
           class="p-2 hover:bg-gray-50 rounded-xl text-gray-400 hover:text-blue-600 transition-all"
@@ -272,8 +273,101 @@ const getCategoryName = (id) => {
       </div>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <!-- Mobile: balance + collapsible funds & tax -->
+    <div class="lg:hidden space-y-3">
+      <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-5 text-white shadow-lg shadow-blue-200/40">
+        <p class="text-[10px] font-black uppercase tracking-widest text-blue-200">
+          Загальний баланс
+        </p>
+        <SkeletonLoader
+          v-if="isPageLoading"
+          width="160px"
+          height="36px"
+          className="bg-white/20 mt-2"
+          borderRadius="10px"
+        />
+        <p v-else class="text-3xl font-black mt-1 tabular-nums whitespace-nowrap">
+          {{ formatMoney(realBalance) }}
+        </p>
+        <p class="text-sm text-blue-200 mt-1">
+          {{ profile?.is_fop ? 'Прибуток за весь час' : 'Всього за весь час' }}
+        </p>
+      </div>
+
+      <DashboardCollapsibleSection title="Кошти за період">
+        <template #summary>
+          <SkeletonLoader v-if="isPageLoading" width="120px" height="28px" borderRadius="8px" />
+          <template v-else>
+            <p class="text-xl font-black text-gray-900 tabular-nums whitespace-nowrap">
+              {{ formatMoney(realProfit) }}
+            </p>
+            <p class="text-xs text-gray-500 mt-0.5 capitalize">
+              Прибуток · {{ monthName }} {{ currentYear }}
+            </p>
+          </template>
+        </template>
+
+        <div class="space-y-3">
+          <div class="flex justify-between items-center gap-3 py-2 border-b border-gray-50">
+            <div class="min-w-0">
+              <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Поступлення</p>
+              <p v-if="profile?.is_fop" class="text-xs text-blue-600 font-semibold mt-0.5 truncate">
+                ФОП: {{ formatMoney(txStore.summary.totalFopIncome) }}
+              </p>
+            </div>
+            <SkeletonLoader v-if="isPageLoading" width="80px" height="20px" />
+            <span v-else class="font-black text-blue-600 tabular-nums whitespace-nowrap shrink-0">
+              {{ formatMoney(txStore.summary.totalIncome) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center gap-3 py-2 border-b border-gray-50">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Витрати</p>
+            <SkeletonLoader v-if="isPageLoading" width="80px" height="20px" />
+            <span v-else class="font-black text-red-500 tabular-nums whitespace-nowrap shrink-0">
+              {{ formatMoney(txStore.summary.totalExpense) }}
+            </span>
+          </div>
+          <div class="flex justify-between items-center gap-3 py-2">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              {{ profile?.is_fop ? 'Прибуток після податків' : 'Прибуток' }}
+            </p>
+            <SkeletonLoader v-if="isPageLoading" width="80px" height="20px" />
+            <span v-else class="font-black text-gray-900 tabular-nums whitespace-nowrap shrink-0">
+              {{ formatMoney(realProfit) }}
+            </span>
+          </div>
+        </div>
+      </DashboardCollapsibleSection>
+
+      <DashboardCollapsibleSection
+        v-if="profile?.is_fop"
+        title="Податковий розрахунок"
+      >
+        <template #summary>
+          <SkeletonLoader v-if="isPageLoading || !fopSettings" width="120px" height="28px" borderRadius="8px" />
+          <template v-else>
+            <p class="text-xl font-black text-indigo-900 tabular-nums whitespace-nowrap">
+              {{ taxCalculations.total.toFixed(2) }}&nbsp;₴
+            </p>
+            <p class="text-xs text-gray-500 mt-0.5">
+              Нараховано за {{ taxAccrualPeriodLabel }}
+              <span v-if="fopSettings?.fop_group"> · ФОП {{ fopSettings.fop_group }}-ї групи</span>
+            </p>
+          </template>
+        </template>
+
+        <TaxWidget
+          embedded
+          :calculations="taxCalculations"
+          :settings="fopSettings"
+          :period-label="taxAccrualPeriodLabel"
+          :loading="isPageLoading || !fopSettings"
+        />
+      </DashboardCollapsibleSection>
+    </div>
+
+    <!-- Stats Grid (desktop / tablet landscape) -->
+    <div class="hidden lg:grid grid-cols-2 xl:grid-cols-4 gap-6">
       <StatCard 
         title="Загальний Баланс"
         :amount="formatMoney(realBalance)"
@@ -313,10 +407,10 @@ const getCategoryName = (id) => {
     </div>
 
     <!-- Main Content Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
       
-      <!-- Tax Widget Column (Only for FOP) -->
-      <div v-if="profile?.is_fop" class="lg:col-span-1 space-y-6">
+      <!-- Tax Widget Column (Only for FOP, desktop) -->
+      <div v-if="profile?.is_fop" class="hidden lg:block lg:col-span-1 space-y-6">
         <TaxWidget 
           :calculations="taxCalculations" 
           :settings="fopSettings" 
@@ -326,9 +420,9 @@ const getCategoryName = (id) => {
       </div>
 
       <!-- Recent Transactions List Column -->
-      <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="p-4 border-b flex justify-between items-center bg-gray-50">
-          <h2 class="font-bold text-gray-700">Останні операції</h2>
+      <div class="lg:col-span-2 bg-white rounded-2xl lg:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b flex justify-between items-center gap-3 bg-gray-50">
+          <h2 class="font-bold text-gray-800 text-base sm:text-lg">Останні операції</h2>
           <router-link :to="analyticsTransactionsLink" class="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors">
             Всі транзакції →
           </router-link>
@@ -355,10 +449,10 @@ const getCategoryName = (id) => {
             v-for="tx in txStore.transactions.slice(0, 5)" 
             :key="tx.transaction_id" 
             @click="openTransactionDetails(tx)"
-            class="p-4 hover:bg-gray-50 transition-colors flex justify-between items-center cursor-pointer group"
+            class="p-4 hover:bg-gray-50 transition-colors flex justify-between items-center gap-3 cursor-pointer group"
           >
             
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
               <!-- Icon based on type -->
               <div :class="['p-2 rounded-full shrink-0 transition-transform group-hover:scale-110', tx.transaction_type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600']">
                 <component 
@@ -367,20 +461,19 @@ const getCategoryName = (id) => {
                 />
               </div>
               
-              <div>
-                <span class="block font-medium text-gray-800">
+              <div class="min-w-0">
+                <span class="block font-medium text-gray-800 truncate">
                   {{ getCategoryName(tx.category_id) }}
                 </span>
                 <span class="text-xs text-gray-500">
-                  {{ new Date(tx.transaction_date).toLocaleDateString() }}
+                  {{ new Date(tx.transaction_date).toLocaleDateString('uk-UA') }}
                 </span>
               </div>
             </div>
 
-            <div class="text-right">
-              <div :class="['font-bold', tx.transaction_type === 'income' ? 'text-green-600' : 'text-gray-900']">
-                {{ tx.transaction_type === 'income' ? '+' : '-' }}
-                {{ tx.transaction_amount.toFixed(2) }} ₴
+            <div class="text-right shrink-0">
+              <div :class="['font-bold tabular-nums whitespace-nowrap', tx.transaction_type === 'income' ? 'text-green-600' : 'text-gray-900']">
+                {{ tx.transaction_type === 'income' ? '+' : '-' }}{{ tx.transaction_amount.toFixed(2) }}&nbsp;₴
               </div>
               <div v-if="tx.is_foreign_currency" class="text-xs text-gray-400 mt-0.5">
                 ({{ tx.amount_original }} {{ tx.currency_code }})
@@ -430,7 +523,7 @@ const getCategoryName = (id) => {
     <!-- Floating Action Button: Add Transaction -->
     <button 
       @click="openCreateModal"
-      class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50 bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-2xl shadow-blue-300 flex items-center justify-center gap-3 hover:scale-110 active:scale-95 group w-16 h-16 md:w-auto md:h-auto md:py-4 md:px-8 rounded-full md:rounded-2xl"
+      class="fixed z-50 bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-2xl shadow-blue-300 flex items-center justify-center gap-3 hover:scale-110 active:scale-95 group w-16 h-16 md:w-auto md:h-auto md:py-4 md:px-8 rounded-full md:rounded-2xl bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-8 sm:right-8"
     >
       <div class="flex items-center justify-center group-hover:rotate-90 transition-transform duration-300">
         <Plus :size="24" stroke-width="3" />
