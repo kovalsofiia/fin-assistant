@@ -204,11 +204,6 @@ const taxAccrualPeriodLabel = computed(() => {
   return selectedPeriodType.value === 'month' ? 'місяць' : 'квартал';
 });
 
-const group3PaymentTermHint = computed(() => {
-  const group = fopSettings.value?.fop_group;
-  return APP_CONSTANTS.PAYMENT_TERM_HINTS[group] || APP_CONSTANTS.PAYMENT_TERM_HINTS[3];
-});
-
 // Реальний баланс за весь час (Після податків)
 // Примітка: Це оціночне значення, оскільки ми не рахуємо кожен історичний місяць окремо на фронті.
 const realBalance = computed(() => {
@@ -326,7 +321,6 @@ const getCategoryName = (id) => {
           :calculations="taxCalculations" 
           :settings="fopSettings" 
           :period-label="taxAccrualPeriodLabel"
-          :payment-term-hint="group3PaymentTermHint"
           :loading="isPageLoading || !fopSettings"
         />
       </div>

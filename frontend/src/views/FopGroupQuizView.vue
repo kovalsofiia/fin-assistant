@@ -5,20 +5,13 @@ import {
   ArrowLeft,
   ArrowRight,
   ClipboardList,
-  HelpCircle,
   Sparkles,
   AlertTriangle,
 } from 'lucide-vue-next';
 import {
   evaluateFopGroupQuiz,
-  GROUP2_CONTEXT_NOTE,
-  GROUP2_EMPLOYER_PAYROLL_NOTE,
-  GROUP3_CONTEXT_NOTE,
-  GROUP3_FX_ZED_NOTE,
-  GROUP3_ZERO_INCOME_NOTE,
   GROUP4_CONTEXT_NOTE,
   GROUP4_EP_FROM_NORMATIVE_NOTE,
-  GROUP4_REPORTING_NOTE,
   QUIZ_LEGAL_NOTE,
 } from '@/utils/fopGroupQuizEngine';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
@@ -32,18 +25,11 @@ onMounted(() => {
 });
 
 const quizCtx = computed(() => taxRulesStore.quizCtx);
-const g4MilitaryAnnual = computed(() => quizCtx.value.militaryFixedMonthly * 12);
-
 const STEP_TITLES = {
-  income: 'Проєктований дохід',
-  employees: 'Наймані працівники',
-  activity: 'Вид діяльності',
-  zedvat: 'ЗЕД та ПДВ',
-  g1: '1 група (умови)',
-  esv: 'ЄСВ з ФОП',
-  fx: 'Валютний дохід',
-  land: 'Земля (4 група)',
-  result: 'Результат',
+  profile: 'Ваш профіль',
+  flags: 'Особливості бізнесу',
+  land: 'Сільгосп',
+  result: 'На що звернути увагу',
 };
 
 const answers = reactive({
@@ -56,20 +42,45 @@ const answers = reactive({
   g4LandType: 'arable_pasture',
   zedExport: false,
   expectsVatRegistration: false,
+  /** Послуги/товари юрособам на загальній системі оподаткування */
+  b2bLegalEntitiesGeneral: false,
   g1ActivityAllowed: true,
   esvCoveredElsewhere: false,
   fxIncomeSharePercent: 0,
 });
 
-/** Динамічна послідовність екранів квізу */
+/** 3–4 кроки: профіль → особливості → (сільгосп) → результат */
 const stepIds = computed(() => {
-  const s = ['income', 'employees', 'activity', 'zedvat'];
-  if (answers.employeesBand === '0') s.push('g1');
-  s.push('esv', 'fx');
+  const s = ['profile', 'flags'];
   if (answers.activity === 'agriculture') s.push('land');
   s.push('result');
   return s;
 });
+
+const showG1Option = computed(
+  () =>
+    answers.employeesBand === '0' &&
+    answers.activity !== 'agriculture' &&
+    answers.projectedAnnualIncomeUah <= quizCtx.value.limits.g1
+);
+
+/** Один перемикач замість окремих кроків ЗЕД і «валюта %» */
+const internationalOrZed = computed({
+  get: () => answers.zedExport || answers.fxIncomeSharePercent > 0,
+  set: (v) => {
+    answers.zedExport = v;
+    answers.fxIncomeSharePercent = v ? 100 : 0;
+  },
+});
+
+watch(
+  () => [answers.activity, answers.employeesBand],
+  () => {
+    if (answers.activity === 'trade' && answers.employeesBand === '0') {
+      answers.g1ActivityAllowed = true;
+    }
+  }
+);
 
 const step = ref(0);
 
@@ -86,6 +97,14 @@ const progressPct = computed(() =>
 
 const result = computed(() => evaluateFopGroupQuiz(answers, quizCtx.value));
 
+const g4LandIncomplete = computed(() => {
+  const ha = Number(answers.landAreaHa) || 0;
+  const norm = Number(answers.normativeLandValuePerHa) || 0;
+  return ha <= 0 || norm <= 0;
+});
+
+const g4LandPreview = computed(() => result.value.groups.find((g) => g.group === 4));
+
 const isResultStep = computed(() => currentStepId.value === 'result');
 
 function next() {
@@ -98,10 +117,10 @@ function back() {
 }
 
 const incomePresets = [
-  { label: 'До 1,4 млн', value: 1_200_000 },
-  { label: '3–5 млн', value: 4_000_000 },
-  { label: '7–9 млн', value: 8_000_000 },
-  { label: '10+ млн', value: 10_500_000 },
+  { label: 'До ~1,4 млн', value: 1_000_000, hint: '1 група можлива' },
+  { label: '~1,4–7 млн', value: 3_000_000, hint: '2 або 3 група' },
+  { label: '~7–10 млн', value: 8_000_000, hint: '2 або 3 група' },
+  { label: 'Понад ~10 млн', value: 10_500_000, hint: 'перевірка ліміту 3' },
 ];
 
 function formatUah(n) {
@@ -126,9 +145,9 @@ function formatUah(n) {
           <ClipboardList :size="28" stroke-width="2.5" />
         </div>
         <div>
-          <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Квіз: яка група ФОП ближча</h1>
+          <h1 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Яка група ФОП вам ближча</h1>
           <p class="text-gray-500 font-medium mt-2">
-            Орієнтир {{ new Date().getFullYear() }} р., спрощені формули та ліміти — для планування, не для звітності.
+            Короткий орієнтир {{ new Date().getFullYear() }} р. — на які групи звернути увагу, без податкової звітності.
           </p>
         </div>
       </div>
@@ -144,169 +163,142 @@ function formatUah(n) {
       </p>
     </header>
 
-    <!-- income -->
-    <section v-show="currentStepId === 'income'" class="space-y-6">
-      <label class="block text-sm font-black text-gray-400 uppercase tracking-widest">Очікуваний річний дохід (грн)</label>
-      <input
-        v-model.number="answers.projectedAnnualIncomeUah"
-        type="number"
-        min="0"
-        step="1000"
-        class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-black text-xl text-gray-900 outline-none transition-all"
-      >
-      <div class="flex flex-wrap gap-2">
-        <button
-          v-for="p in incomePresets"
-          :key="p.label"
-          type="button"
-          class="px-4 py-2 rounded-xl bg-gray-50 font-bold text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 border border-transparent hover:border-indigo-100 transition-all"
-          @click="answers.projectedAnnualIncomeUah = p.value"
+    <!-- profile -->
+    <section v-show="currentStepId === 'profile'" class="space-y-8">
+      <div class="space-y-4">
+        <label class="block text-sm font-black text-gray-400 uppercase tracking-widest">Очікуваний річний дохід</label>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <button
+            v-for="p in incomePresets"
+            :key="p.label"
+            type="button"
+            class="px-4 py-4 rounded-2xl text-left border-2 transition-all"
+            :class="
+              answers.projectedAnnualIncomeUah === p.value
+                ? 'border-indigo-600 bg-indigo-50'
+                : 'border-gray-100 bg-white hover:border-gray-200'
+            "
+            @click="answers.projectedAnnualIncomeUah = p.value"
+          >
+            <span class="font-black text-gray-900 block">{{ p.label }}</span>
+            <span class="text-xs text-gray-500 mt-1 block">{{ p.hint }}</span>
+          </button>
+        </div>
+        <input
+          v-model.number="answers.projectedAnnualIncomeUah"
+          type="number"
+          min="0"
+          step="1000"
+          class="w-full px-5 py-3 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-bold text-gray-900 outline-none"
+          placeholder="Точніша сума (грн)"
         >
-          {{ p.label }}
-        </button>
       </div>
-      <div class="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-sm text-amber-900 leading-relaxed flex gap-3">
-        <HelpCircle class="shrink-0 mt-0.5" :size="18" />
-        <span>
-          Ліміти: 1 група — {{ quizCtx.limitMzpUnits.g1 }} МЗП (до {{ quizCtx.limits.g1.toLocaleString('uk-UA') }} грн);
-          2 група — {{ quizCtx.limitMzpUnits.g2 }} МЗП (до {{ quizCtx.limits.g2.toLocaleString('uk-UA') }} грн);
-          3 група — {{ quizCtx.limitMzpUnits.g3 }} МЗП (до {{ quizCtx.limits.g3.toLocaleString('uk-UA') }} грн).
-        </span>
-      </div>
-    </section>
 
-    <!-- employees -->
-    <section v-show="currentStepId === 'employees'" class="space-y-4">
-      <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Наймані працівники</p>
-      <div class="grid gap-3">
-        <label
-          v-for="opt in [
-            { v: '0', t: 'Немає (0)' },
-            { v: '1-10', t: 'Від 1 до 10' },
-            { v: '11+', t: 'Більше 10' },
-          ]"
-          :key="opt.v"
-          class="flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all"
-          :class="answers.employeesBand === opt.v ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 bg-white hover:border-gray-200'"
+      <div class="space-y-3">
+        <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Наймані працівники</p>
+        <div class="grid gap-2">
+          <label
+            v-for="opt in [
+              { v: '0', t: 'Немає' },
+              { v: '1-10', t: '1–10' },
+              { v: '11+', t: 'Понад 10' },
+            ]"
+            :key="opt.v"
+            class="flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all"
+            :class="answers.employeesBand === opt.v ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100'"
+          >
+            <input v-model="answers.employeesBand" type="radio" :value="opt.v" class="w-5 h-5 text-indigo-600">
+            <span class="font-black text-gray-900">{{ opt.t }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Основна діяльність</p>
+        <select
+          v-model="answers.activity"
+          class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-bold text-gray-900 outline-none bg-white"
         >
-          <input v-model="answers.employeesBand" type="radio" :value="opt.v" class="w-5 h-5 text-indigo-600">
-          <span class="font-black text-gray-900">{{ opt.t }}</span>
-        </label>
-      </div>
-      <p class="text-xs text-gray-500 leading-relaxed">
-        1 група — без найму; 2 група — до 10 осіб одночасно; 3 група — без ліміту «10 осіб» (інші вимоги ПКУ лишаються).
-      </p>
-      <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 text-sm text-slate-700 leading-relaxed space-y-3">
-        <p>{{ GROUP2_CONTEXT_NOTE }}</p>
-        <p class="text-xs text-slate-600 border-t border-slate-200 pt-3">{{ GROUP2_EMPLOYER_PAYROLL_NOTE }}</p>
-      </div>
-      <div class="p-5 rounded-2xl bg-indigo-50/80 border border-indigo-100 text-sm text-indigo-950 leading-relaxed space-y-2">
-        <p class="font-black text-indigo-900 uppercase tracking-wider text-xs">3 група</p>
-        <p>{{ GROUP3_CONTEXT_NOTE }}</p>
+          <option value="services">Послуги</option>
+          <option value="trade">Торгівля / ринок</option>
+          <option value="production">Виробництво</option>
+          <option value="agriculture">Сільське господарство</option>
+          <option value="other">Інше</option>
+        </select>
       </div>
     </section>
 
-    <!-- activity -->
-    <section v-show="currentStepId === 'activity'" class="space-y-4">
-      <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Основний вид діяльності</p>
-      <p class="text-xs text-gray-500 leading-relaxed">
-        Для <strong>2 групи</strong> — HoReCa, мале виробництво, роздріб (B2C); для <strong>3 групи</strong> — IT, консалтинг, юрособи, ЗЕД; для <strong>4 групи</strong> орієнтир — лише агросектор і земельні ділянки (доступ не від обсягу доходу в тій самій логіці, що 1–3 групи).
+    <!-- flags -->
+    <section v-show="currentStepId === 'flags'" class="space-y-3">
+      <p class="text-sm text-gray-600 leading-relaxed mb-2">
+        Позначте лише те, що стосується вас — це звужує орієнтир до 3 групи або 1 групи.
       </p>
-      <select
-        v-model="answers.activity"
-        class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-bold text-gray-900 outline-none bg-white"
-      >
-        <option value="services">Послуги</option>
-        <option value="trade">Торгівля</option>
-        <option value="production">Виробництво</option>
-        <option value="agriculture">Сільське господарство (земля)</option>
-        <option value="other">Інше</option>
-      </select>
-    </section>
-
-    <!-- zedvat -->
-    <section v-show="currentStepId === 'zedvat'" class="space-y-6">
-      <div class="p-4 rounded-2xl bg-violet-50 border border-violet-100 text-xs text-violet-950 leading-relaxed">
-        {{ GROUP3_FX_ZED_NOTE }}
-      </div>
-      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
-        <input v-model="answers.zedExport" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
+      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50">
+        <input v-model="internationalOrZed" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
         <span>
-          <span class="font-black text-gray-900 block">Є експорт / імпорт (ЗЕД)</span>
-          <span class="text-sm text-gray-500">Може впливати на ПДВ і звітність окремо від спрощених ставок.</span>
+          <span class="font-black text-gray-900 block">Є ЗЕД або дохід у валюті</span>
+          <span class="text-sm text-gray-500">Типовий орієнтир — 3 група.</span>
         </span>
       </label>
-      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors">
+      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50">
         <input v-model="answers.expectsVatRegistration" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
         <span>
-          <span class="font-black text-gray-900 block">Очікую реєстрацію платником ПДВ або постачання понад поріг (~{{ quizCtx.vatThreshold.toLocaleString('uk-UA') }} грн за 12 міс)</span>
-          <span class="text-sm text-gray-500">
-            Для 3 групи в квізі: неплатник ПДВ — ЄП {{ quizCtx.g3.epNonVat }}% від доходу; платник ПДВ — ЄП {{ quizCtx.g3.epVat }}% від доходу за квартал + ПДВ окремо в обліку.
-          </span>
+          <span class="font-black text-gray-900 block">Планую бути платником ПДВ</span>
+          <span class="text-sm text-gray-500">Орієнтир — 3 група (інша ставка ЄП).</span>
         </span>
       </label>
-      <p class="text-xs text-gray-500 leading-relaxed px-1">{{ GROUP3_ZERO_INCOME_NOTE }}</p>
-    </section>
-
-    <!-- g1 -->
-    <section v-show="currentStepId === 'g1'" class="space-y-4">
-      <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Чи підходить діяльність під 1 групу?</p>
-      <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 text-sm text-slate-700 leading-relaxed space-y-3">
-        <p>
-          <strong>1 група</strong> — базовий рівень спрощеної системи для <strong>індивідуальної</strong> зайнятості: типово
-          роздрібний продаж із торговельних місць на ринках або побутові послуги населенню (наприклад ремонт взуття, пошив одягу за переліком ПКУ).
-        </p>
-        <p>
-          Наймані працівники для цієї групи <strong>не допускаються</strong>. Максимальний річний дохід 2026:
-          <strong>{{ quizCtx.limitMzpUnits.g1 }} МЗП</strong> (до {{ quizCtx.limits.g1.toLocaleString('uk-UA') }} грн).
-        </p>
-        <p class="text-xs text-slate-500 border-t border-slate-200 pt-3">
-          Податки (орієнтир): ЄП фіксовано {{ quizCtx.monthlyFixed.g1.single }} грн/міс; військовий збір
-          {{ quizCtx.monthlyFixed.g1.military }} грн/міс; ЄСВ {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП).
-        </p>
-      </div>
-      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:border-indigo-100 transition-colors">
-        <input v-model="answers.g1ActivityAllowed" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
-        <span class="font-bold text-gray-800 leading-snug">
-          Так, моя діяльність відповідає обмеженням для 1 групи та КВЕД (узгодити з бухгалтером за актуальним переліком)
-        </span>
-      </label>
-    </section>
-
-    <!-- esv -->
-    <section v-show="currentStepId === 'esv'" class="space-y-4">
-      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-indigo-100 bg-indigo-50/50 cursor-pointer">
-        <input v-model="answers.esvCoveredElsewhere" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
-        <span>
-          <span class="font-black text-gray-900 block">Не нараховувати мінімальний ЄСВ з ФОП у порівнянні для 3 групи</span>
-          <span class="text-sm text-gray-600">Якщо внесок уже покривається основним місцем — зменшуємо оцінку лише для 3 групи.</span>
-        </span>
-      </label>
-      <p class="text-xs text-gray-400">
-        Для 1–2 та 4 груп у квізі ЄСВ усе одно врахований типово ({{ quizCtx.esvMonthly }} грн/міс).
-      </p>
-    </section>
-
-    <!-- fx -->
-    <section v-show="currentStepId === 'fx'" class="space-y-4">
-      <label class="block text-sm font-black text-gray-400 uppercase tracking-widest">Частка доходу в іноземній валюті (%)</label>
-      <input
-        v-model.number="answers.fxIncomeSharePercent"
-        type="range"
-        min="0"
-        max="100"
-        step="5"
-        class="w-full accent-indigo-600"
+      <p
+        v-if="result.vatRegistrationWarning && currentStepId === 'flags'"
+        class="text-xs text-amber-800 font-medium px-4"
       >
-      <p class="text-center font-black text-2xl text-indigo-600">{{ answers.fxIncomeSharePercent }}%</p>
-      <p class="text-xs text-gray-500 leading-relaxed">
-        Для ліміту спрощеної системи дохід перераховується в гривні за курсом НБУ. Поле нагадує про валютну частку; порівняння груп за сумою в гривнях.
+        Дохід понад {{ quizCtx.vatThreshold.toLocaleString('uk-UA') }} грн — можлива обов’язкова реєстрація ПДВ, але 2
+        група лишається можливою, доки не обрали ПДВ вище.
       </p>
+      <label class="flex items-start gap-4 p-5 rounded-2xl border-2 border-gray-100 cursor-pointer hover:bg-gray-50">
+        <input v-model="answers.b2bLegalEntitiesGeneral" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
+        <span>
+          <span class="font-black text-gray-900 block">Регулярно працюватиму з юрособами на загальній системі</span>
+          <span class="text-sm text-gray-500">1–2 групи зазвичай не підходять.</span>
+        </span>
+      </label>
+      <label
+        v-if="showG1Option"
+        class="flex items-start gap-4 p-5 rounded-2xl border-2 border-slate-100 bg-slate-50/80 cursor-pointer"
+      >
+        <input v-model="answers.g1ActivityAllowed" type="checkbox" class="mt-1 rounded border-gray-300 text-indigo-600 w-5 h-5">
+        <span class="font-bold text-gray-800 leading-snug text-sm">
+          Діяльність під 1 групу (ринок, побутові послуги населенню)
+        </span>
+      </label>
     </section>
 
     <!-- land -->
     <section v-show="currentStepId === 'land'" class="space-y-4">
-      <p class="text-sm font-black text-gray-400 uppercase tracking-widest">4 група — земельні дані</p>
+      <p class="text-sm font-black text-gray-400 uppercase tracking-widest">Сільгосп — чи є земля для 4 групи?</p>
+      <p class="text-sm text-gray-600">{{ GROUP4_CONTEXT_NOTE }}</p>
+      <div
+        v-if="g4LandIncomplete"
+        class="p-5 rounded-2xl bg-amber-50 border-2 border-amber-200 text-sm text-amber-950 leading-relaxed flex gap-3"
+        role="alert"
+      >
+        <AlertTriangle class="shrink-0 mt-0.5 text-amber-600" :size="22" />
+        <div>
+          <p class="font-black text-amber-900">4 група зараз недоступна</p>
+          <p class="mt-1">
+            Без <strong>площі угідь (га)</strong> та <strong>нормативної грошової оцінки (грн/га)</strong> квіз не зможе
+            включити 4 групу в порівняння. Рекомендація буде орієнтована на <strong>3 групу</strong>, доки не заповните обидва поля.
+          </p>
+          <p v-if="g4LandPreview?.disqualifyReason" class="mt-2 text-xs font-medium text-amber-800/90">
+            {{ g4LandPreview.disqualifyReason }}
+          </p>
+        </div>
+      </div>
+      <div
+        v-else
+        class="p-4 rounded-2xl bg-emerald-100/80 border border-emerald-200 text-sm font-bold text-emerald-900"
+      >
+        Земельні дані заповнені — 4 група може бути допустимою (за умови без найму та сільгосп-діяльності).
+      </div>
       <div class="p-5 rounded-2xl bg-emerald-50/90 border border-emerald-100 text-sm text-emerald-950 leading-relaxed space-y-3">
         <p>{{ GROUP4_CONTEXT_NOTE }}</p>
         <p class="text-xs text-emerald-900/90 border-t border-emerald-200 pt-3">{{ GROUP4_EP_FROM_NORMATIVE_NOTE }}</p>
@@ -337,26 +329,50 @@ function formatUah(n) {
         class="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-indigo-500 font-bold outline-none"
       >
       <p class="text-xs text-gray-500 leading-relaxed border-t border-gray-100 pt-4">
-        <strong>Військовий збір (орієнтир):</strong> фіксовано {{ quizCtx.militaryFixedMonthly }} грн/міс (10% від МЗП), річний еквівалент
-        {{ g4MilitaryAnnual.toLocaleString('uk-UA') }} грн. <strong>ЄСВ ФОП:</strong> {{ quizCtx.esvMonthly }} грн/міс на загальних підставах.
+        Можна пропустити поля — тоді орієнтир буде на 3 групу для сільгоспу без даних землі.
       </p>
-      <p class="text-xs text-gray-500">{{ GROUP4_REPORTING_NOTE }}</p>
     </section>
 
     <!-- result -->
     <section v-show="currentStepId === 'result'" class="space-y-6">
       <div
-        v-if="result.recommendedGroup"
+        v-if="result.focusSummary?.primaryGroup"
         class="p-8 rounded-[2rem] bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-2xl shadow-indigo-300/40"
       >
         <div class="flex items-center gap-3 mb-4">
           <Sparkles :size="28" />
-          <span class="font-black uppercase tracking-widest text-sm text-white/80">Найменше оціночне навантаження серед допустимих</span>
+          <span class="font-black uppercase tracking-widest text-sm text-white/80">Орієнтир</span>
         </div>
-        <p class="text-5xl font-black tabular-nums">{{ result.recommendedGroup }} група</p>
-        <p class="mt-4 text-white/90 font-medium">
-          Оціночні податки на рік (ЄП + ВЗ + ЄСВ за моделлю квізу): ≈ {{ formatUah(result.recommendedTaxUah) }}
+        <p class="text-5xl font-black tabular-nums">{{ result.focusSummary.primaryGroup }} група</p>
+        <p class="mt-4 text-white/95 font-medium text-lg leading-snug">
+          {{ result.focusSummary.headline }}
         </p>
+        <p v-if="result.recommendedTaxUah != null" class="mt-3 text-sm text-white/80">
+          Оціночне навантаження (ЄП + ВЗ + ЄСВ ФОП): ≈ {{ formatUah(result.recommendedTaxUah) }}
+        </p>
+      </div>
+
+      <div
+        v-if="result.focusSummary?.groupsToConsider?.length > 1"
+        class="p-6 rounded-2xl border border-indigo-100 bg-indigo-50/40"
+      >
+        <p class="text-xs font-black text-indigo-900 uppercase tracking-widest mb-4">
+          Також варто порівняти ({{ result.focusSummary.eligibleCount }} допустимі)
+        </p>
+        <ul class="space-y-3">
+          <li
+            v-for="item in result.focusSummary.groupsToConsider"
+            :key="item.group"
+            class="p-4 rounded-xl bg-white border border-indigo-100/80"
+            :class="item.isPrimary ? 'ring-2 ring-indigo-500' : ''"
+          >
+            <p class="font-black text-gray-900">
+              {{ item.group }} група
+              <span v-if="item.isPrimary" class="text-indigo-600 text-sm font-bold ml-2">— пріоритет</span>
+            </p>
+            <p class="text-sm text-gray-600 mt-1">{{ item.hint }}</p>
+          </li>
+        </ul>
       </div>
 
       <div v-else class="p-6 rounded-2xl bg-red-50 border border-red-100 flex gap-3 text-red-900">
@@ -367,56 +383,41 @@ function formatUah(n) {
         </div>
       </div>
 
-      <div class="rounded-[2rem] border border-gray-100 bg-white shadow-lg overflow-hidden">
-        <table class="w-full text-left text-sm">
+      <details class="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <summary class="px-5 py-4 font-black text-gray-800 cursor-pointer hover:bg-gray-50">
+          Детальне порівняння груп і податків
+        </summary>
+        <table class="w-full text-left text-sm border-t border-gray-100">
           <thead class="bg-gray-50 text-xs font-black uppercase tracking-wider text-gray-400">
             <tr>
-              <th class="px-5 py-4">Група</th>
-              <th class="px-5 py-4">Статус</th>
-              <th class="px-5 py-4 text-right">Податки / рік (оцінка)</th>
+              <th class="px-5 py-3">Група</th>
+              <th class="px-5 py-3">Статус</th>
+              <th class="px-5 py-3 text-right">Податки / рік</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-50">
-            <tr v-for="row in result.groups" :key="row.group" class="hover:bg-gray-50/80">
-              <td class="px-5 py-4 font-black text-gray-900">{{ row.group }}</td>
-              <td class="px-5 py-4">
-                <span v-if="row.eligible" class="text-emerald-600 font-bold">Допустима</span>
-                <span v-else class="text-gray-500 text-xs leading-snug">{{ row.disqualifyReason }}</span>
+            <tr v-for="row in result.groups" :key="row.group">
+              <td class="px-5 py-3 font-black">{{ row.group }}</td>
+              <td class="px-5 py-3">
+                <span v-if="row.eligible" class="text-emerald-600 font-bold">Можлива</span>
+                <span v-else class="text-gray-500 text-xs">{{ row.disqualifyReason }}</span>
               </td>
-              <td class="px-5 py-4 text-right font-bold tabular-nums">
+              <td class="px-5 py-3 text-right font-bold tabular-nums">
                 {{ row.eligible ? formatUah(row.estimatedAnnualTaxUah) : '—' }}
               </td>
             </tr>
           </tbody>
         </table>
-      </div>
+      </details>
 
-      <div class="p-5 rounded-2xl bg-gray-50 border border-gray-100 text-xs text-gray-600 leading-relaxed space-y-2">
-        <p>
-          <strong>1 група:</strong> ЄП {{ quizCtx.monthlyFixed.g1.single }} грн/міс (фіксована ставка незалежно від доходу в межах ліміту),
-          ВЗ {{ quizCtx.monthlyFixed.g1.military }} грн/міс; разом із ЄСВ модель квізу рахує річну суму ЄП+ВЗ+ЄСВ.
-        </p>
-        <p>
-          <strong>2 група:</strong> ліміт доходу {{ quizCtx.limitMzpUnits.g2 }} МЗП (до
-          {{ quizCtx.limits.g2.toLocaleString('uk-UA') }} грн). ЄП фіксовано {{ quizCtx.monthlyFixed.g2.single }} грн/міс (20% від
-          прожиткового мінімуму за правилами ПКУ), незалежно від доходу в межах ліміту; ВЗ {{ quizCtx.monthlyFixed.g2.military }} грн/міс (10%
-          від МЗП). ЄСВ самого ФОП — {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП). Для найманих: утримання ПДФО 18%, ВЗ 5% із зарплати та нарахування ЄСВ 22% на фонд оплати праці (не входить у число в таблиці «податки ФОП» вище).
-        </p>
-        <p class="text-xs text-gray-500"><strong>Модель квізу</strong> порівнює лише фіксовані платежі самого ФОП + типовий ЄСВ ФОП; зарплатні утримання не додаються до суми в таблиці вище.</p>
-        <p>
-          <strong>3 група:</strong> ліміт {{ quizCtx.limitMzpUnits.g3 }} МЗП (до {{ quizCtx.limits.g3.toLocaleString('uk-UA') }} грн).
-          ЄП — {{ quizCtx.g3.epNonVat }}% від доходу (неплатник ПДВ) або {{ quizCtx.g3.epVat }}% від доходу за квартал + ПДВ (платник ПДВ); військовий збір {{ quizCtx.g3.militaryPct }}% від доходу (у квізі — від річного проєкту).
-          ЄСВ ФОП — {{ quizCtx.esvMonthly }} грн/міс (22% від МЗП).
-        </p>
-        <p class="text-xs text-gray-500"><strong>Без доходу:</strong> {{ GROUP3_ZERO_INCOME_NOTE }}</p>
-        <p>
-          <strong>4 група (орієнтир 2026):</strong> лише сільгосп; доступ прив’язаний до земельних ділянок (угідь, водний фонд), ЄП від нормативної грошової оцінки × площа × ставку (обраний тип:
-          {{ quizCtx.g4Rates[answers.g4LandType] ?? quizCtx.g4Rates.arable_pasture }}%). ВЗ фіксовано {{ quizCtx.militaryFixedMonthly }} грн/міс (річний еквівалент {{ g4MilitaryAnnual.toLocaleString('uk-UA') }} грн); ЄСВ — {{ quizCtx.esvMonthly }} грн/міс. {{ GROUP4_REPORTING_NOTE }}
-        </p>
-        <p v-if="result.fxNote">{{ result.fxNote }}</p>
-        <p v-if="result.zedNote">{{ result.zedNote }}</p>
-        <p class="text-gray-500 pt-2 border-t border-gray-200">{{ QUIZ_LEGAL_NOTE }}</p>
-      </div>
+      <ul
+        v-if="result.recommendationReasons?.length"
+        class="p-5 rounded-2xl bg-gray-50 border border-gray-100 text-sm text-gray-700 space-y-2 list-disc pl-5"
+      >
+        <li v-for="(r, i) in result.recommendationReasons" :key="i">{{ r }}</li>
+      </ul>
+
+      <p class="text-xs text-gray-500 leading-relaxed">{{ QUIZ_LEGAL_NOTE }}</p>
 
       <button
         type="button"

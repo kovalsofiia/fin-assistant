@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ArrowLeft, Database, RefreshCw, Save } from 'lucide-vue-next';
+import { ArrowLeft, ClipboardList, Database, RefreshCw, Save } from 'lucide-vue-next';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 
@@ -119,6 +119,14 @@ function periodLabel(row) {
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 font-bold text-indigo-800 hover:bg-indigo-100"
+          @click="router.push({ name: 'admin-quiz-rules' })"
+        >
+          <ClipboardList :size="18" />
+          Правила квізу
+        </button>
         <input
           v-model.number="seedYear"
           type="number"

@@ -8,6 +8,7 @@ import DashboardView from '@/views/DashboardView.vue';
 import AnalyticsView from '@/views/AnalyticsView.vue';
 import FopGroupQuizView from '@/views/FopGroupQuizView.vue';
 import AdminTaxRulesView from '@/views/AdminTaxRulesView.vue';
+import AdminQuizRulesView from '@/views/AdminQuizRulesView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -51,6 +52,12 @@ const router = createRouter({
       path: '/admin/tax-rules',
       name: 'admin-tax-rules',
       component: AdminTaxRulesView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/admin/quiz-rules',
+      name: 'admin-quiz-rules',
+      component: AdminQuizRulesView,
       meta: { requiresAuth: true }
     },
     {

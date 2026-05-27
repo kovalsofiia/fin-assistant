@@ -35,14 +35,8 @@ const props = defineProps({
   periodLabel: {
     type: String,
     default: 'обраний період'
-  },
-  paymentTermHint: {
-    type: String,
-    default: ''
   }
 });
-
-const isGroup3 = computed(() => props.settings?.fop_group === 3);
 </script>
 
 <template>
@@ -60,18 +54,14 @@ const isGroup3 = computed(() => props.settings?.fop_group === 3);
     <!-- Total Block -->
     <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100">
       <div class="flex justify-between items-center gap-3">
-        <span class="text-blue-800 font-medium text-sm uppercase tracking-wide">
+        <span class="text-blue-800 font-medium text-sm uppercase tracking-wide min-w-0">
           Нараховано за {{ periodLabel }}
         </span>
-        <SkeletonLoader v-if="loading" width="100px" height="28px" className="bg-blue-100" />
-        <span v-else class="text-2xl font-bold text-blue-900">{{ (calculations.total || 0).toFixed(2) }} ₴</span>
+        <SkeletonLoader v-if="loading" width="100px" height="24px" className="bg-blue-100 shrink-0" />
+        <span v-else class="text-xl font-bold text-blue-900 whitespace-nowrap shrink-0 tabular-nums">
+          {{ (calculations.total || 0).toFixed(2) }}&nbsp;₴
+        </span>
       </div>
-      <p v-if="isGroup3" class="text-xs text-blue-800/80 mt-2">
-        Це оціночне нарахування за доходами періоду, не підтвердження фактичного платежу до ДПС.
-      </p>
-      <p v-if="isGroup3 && paymentTermHint" class="text-xs text-indigo-700 mt-1 font-semibold">
-        Строк сплати (ФОП 3): {{ paymentTermHint }}
-      </p>
     </div>
 
     <!-- Breakdown List -->
