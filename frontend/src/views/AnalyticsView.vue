@@ -582,6 +582,12 @@ const severityBadgeClass = (severity) => {
   return 'bg-emerald-100 text-emerald-700 border-emerald-200';
 };
 
+const severityLabel = (severity) => {
+  if (severity === 'high') return 'високий';
+  if (severity === 'medium') return 'середній';
+  return 'низький';
+};
+
 const openCategoryTransactions = (categoryId) => {
   store.filters.categoryId = categoryId === 'uncategorized' ? '' : categoryId;
   store.filters.type = 'expense';
@@ -942,20 +948,20 @@ const analyticsTabs = [
 
       <div v-if="budgetStore.insights?.summary" class="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div class="bg-white p-6 rounded-[2rem] border border-blue-100 shadow-xl shadow-blue-100/20">
-          <p class="text-sm font-bold text-blue-500 uppercase tracking-wider mb-2">Savings rate</p>
+          <p class="text-sm font-bold text-blue-500 uppercase tracking-wider mb-2">Залишок після витрат</p>
           <span class="text-3xl font-black text-gray-900">{{ budgetStore.insights.summary.savings_rate }}%</span>
         </div>
         <div class="bg-white p-6 rounded-[2rem] border border-indigo-100 shadow-xl shadow-indigo-100/20">
-          <p class="text-sm font-bold text-indigo-500 uppercase tracking-wider mb-2">Топ-3 концентрація</p>
+          <p class="text-sm font-bold text-indigo-500 uppercase tracking-wider mb-2">Три головні категорії</p>
           <span class="text-3xl font-black text-gray-900">{{ budgetStore.insights.summary.top3_concentration }}%</span>
         </div>
         <div class="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/20 md:col-span-2">
           <p class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Період аналізу</p>
           <span class="text-lg font-black text-gray-900">
-            {{ budgetStore.insights.summary.start_date }} — {{ budgetStore.insights.summary.end_date }}
+            з {{ budgetStore.insights.summary.start_date }} по {{ budgetStore.insights.summary.end_date }}
           </span>
           <p class="text-xs text-gray-400 mt-2">
-            Порівняння з: {{ budgetStore.insights.summary.previous_start_date }} — {{ budgetStore.insights.summary.previous_end_date }}
+            Порівнюємо з попереднім періодом: з {{ budgetStore.insights.summary.previous_start_date }} по {{ budgetStore.insights.summary.previous_end_date }}
           </p>
         </div>
       </div>
@@ -965,7 +971,7 @@ const analyticsTabs = [
           <span class="w-10 h-10 bg-green-100 flex items-center justify-center rounded-xl text-green-600">
             <TrendingUp size="20" stroke-width="2.5"/>
           </span>
-          Глобальні рекомендації
+          Загальні поради
         </h3>
         <div
           v-for="(tip, idx) in budgetStore.insights.global_recommendations"
@@ -987,15 +993,15 @@ const analyticsTabs = [
             <div>
               <p class="text-lg font-black text-gray-900">{{ item.category_name }}</p>
               <p class="text-sm text-gray-500">
-                Поточні: {{ Number(item.spent_current).toLocaleString('uk-UA') }} ₴ ·
-                Попередні: {{ Number(item.spent_previous).toLocaleString('uk-UA') }} ₴
+                Зараз: {{ Number(item.spent_current).toLocaleString('uk-UA') }} ₴,
+                минулий період: {{ Number(item.spent_previous).toLocaleString('uk-UA') }} ₴
               </p>
             </div>
             <div class="flex items-center gap-3">
               <span class="px-3 py-1 rounded-full text-xs font-black uppercase border" :class="severityBadgeClass(item.severity)">
-                {{ item.severity }}
+                {{ severityLabel(item.severity) }} ризик
               </span>
-              <span class="text-sm font-black text-gray-700">Score: {{ item.risk_score }}</span>
+              <span class="text-sm font-black text-gray-700">Оцінка: {{ item.risk_score }}</span>
             </div>
           </div>
 
@@ -1003,7 +1009,7 @@ const analyticsTabs = [
 
           <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-bold text-gray-600">
             <span>Частка у витратах: {{ item.share_of_total }}%</span>
-            <span>Δ до попереднього періоду: {{ item.delta_pct }}%</span>
+            <span>Зміна до минулого періоду: {{ item.delta_pct > 0 ? '+' : '' }}{{ item.delta_pct }}%</span>
             <span v-if="item.budget_usage_pct !== null">Використання бюджету: {{ item.budget_usage_pct }}%</span>
           </div>
 

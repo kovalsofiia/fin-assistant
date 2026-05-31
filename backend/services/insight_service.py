@@ -137,18 +137,36 @@ class InsightService:
         return "low"
 
     @staticmethod
+    def _fmt_uah(amount: float) -> str:
+        value = round(amount, 2)
+        if value == int(value):
+            text = f"{int(value):,}".replace(",", " ")
+        else:
+            whole, frac = f"{value:,.2f}".split(".")
+            text = f"{whole.replace(',', ' ')},{frac}"
+        return f"{text} грн"
+
+    @staticmethod
     def _conclusion(category_name: str, spent_current: float, delta_pct: float, share_pct: float, budget_usage_pct: Optional[float]) -> str:
-        parts = [
-            f"Категорія '{category_name}' має витрати {round(spent_current, 2):,.2f} грн",
-            f"і формує {round(share_pct, 1)}% від усіх витрат.",
-        ]
-        if delta_pct > 0:
-            parts.append(f"Зростання до попереднього періоду: +{round(delta_pct, 1)}%.")
-        elif delta_pct < 0:
-            parts.append(f"Зміна до попереднього періоду: {round(delta_pct, 1)}%.")
+        parts = [f"За обраний період на {category_name} пішло {InsightService._fmt_uah(spent_current)}."]
+
+        if share_pct >= 10:
+            parts.append(f"Це {round(share_pct, 1)}% усіх ваших витрат.")
+        elif share_pct > 0:
+            parts.append(f"Частка серед усіх витрат: {round(share_pct, 1)}%.")
+
+        if delta_pct > 5:
+            parts.append(f"Порівняно з минулим періодом витрати зросли на {round(delta_pct, 1)}%.")
+        elif delta_pct < -5:
+            parts.append(f"Порівняно з минулим періодом витрати зменшились на {abs(round(delta_pct, 1))}%.")
+        elif spent_current > 0 and delta_pct != 0:
+            parts.append(f"До минулого періоду зміна невелика ({round(delta_pct, 1)}%).")
 
         if budget_usage_pct is not None and budget_usage_pct > 100:
             parts.append(f"Ліміт бюджету перевищено на {round(budget_usage_pct - 100, 1)}%.")
+        elif budget_usage_pct is not None and budget_usage_pct >= 85:
+            parts.append(f"Від запланованого бюджету вже використано {round(budget_usage_pct, 1)}%.")
+
         return " ".join(parts)
 
     @staticmethod
@@ -156,11 +174,20 @@ class InsightService:
         recs: List[str] = []
         if budget_usage_pct is not None and budget_usage_pct > 100:
             target = round(spent_current * 0.9, 2)
-            recs.append(f"Оновіть ліміт для '{category_name}' до {target:,.2f} грн та контролюйте перевищення щотижня.")
+            recs.append(
+                f"Можливо, варто підняти ліміт до {InsightService._fmt_uah(target)} "
+                f"і раз на тиждень перевіряти, чи не виходите за межі в {category_name}."
+            )
         if delta_pct > 20:
-            recs.append(f"Перевірте 3 найбільші транзакції у '{category_name}' — вони найімовірніше дали основний ріст.")
+            recs.append(
+                f"Загляньте в три найбільші платежі в {category_name}. "
+                "Зазвичай саме вони дають такий стрибок."
+            )
         if not recs:
-            recs.append(f"Збережіть поточний тренд у '{category_name}' та перевіряйте витрати раз на тиждень.")
+            recs.append(
+                f"У {category_name} зараз усе спокійно. "
+                "Раз на тиждень вистачить короткого перегляду витрат."
+            )
         return recs[:2]
 
     @staticmethod
@@ -218,11 +245,20 @@ class InsightService:
         top3_share = round(sum(i["share_of_total"] for i in insights[:3]), 1) if insights else 0.0
         global_recommendations: List[str] = []
         if top3_share >= 70:
-            global_recommendations.append("Топ-3 категорії формують більшість витрат. Почніть оптимізацію саме з них.")
+            global_recommendations.append(
+                "Більшість грошей йде в три категорії. "
+                "Якщо хочете витрачати менше, почніть переглядати витрати саме там."
+            )
         if savings_rate < 10 and total_income > 0:
-            global_recommendations.append("Низький рівень заощаджень. Спробуйте знизити витрати у high-risk категоріях на 10-15%.")
+            global_recommendations.append(
+                "Після всіх витрат залишається мало. "
+                "Подивіться категорії з найвищим ризиком і спробуйте скоротити їх хоча б на 10%."
+            )
         if not global_recommendations:
-            global_recommendations.append("Структура витрат стабільна. Підтримуйте щотижневий контроль топ-категорій.")
+            global_recommendations.append(
+                "Картина витрат виглядає рівною. "
+                "Раз на тиждень переглядайте топ-категорії, цього зазвичай достатньо."
+            )
 
         return {
             "summary": {
