@@ -10,12 +10,11 @@ import {
   toKvedSyncPayload,
 } from '@/utils/kvedStorage';
 import {
-  ClipboardList,
+  Sparkles,
   Loader2,
   AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  BookOpen,
+  ChevronDown,
+  Settings2,
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -37,7 +36,7 @@ const periodLabel = computed(() => {
   if (props.startDate && props.endDate) {
     return `${props.startDate} — ${props.endDate}`;
   }
-  return `календарний ${new Date().getFullYear()} рік`;
+  return `${new Date().getFullYear()} рік`;
 });
 
 function formatUah(n) {
@@ -80,12 +79,8 @@ async function ensureKvedsSynced() {
   return userKvedList.value;
 }
 
-async function refreshKvedStatus() {
-  await ensureKvedsSynced();
-}
-
 onMounted(() => {
-  refreshKvedStatus();
+  ensureKvedsSynced();
 });
 
 async function fetchRecommendation() {
@@ -104,7 +99,7 @@ async function fetchRecommendation() {
     const res = await api.getFopGroupRecommend(params);
     result.value = res.data;
   } catch (e) {
-    const msg = e.response?.data?.detail || 'Не вдалося розрахувати рекомендацію';
+    const msg = e.response?.data?.detail || 'Не вдалося сформувати рекомендацію';
     error.value = typeof msg === 'string' ? msg : JSON.stringify(msg);
     notificationStore.showError(error.value);
   } finally {
@@ -118,274 +113,315 @@ const groups = computed(() => evaluation.value?.groups || []);
 const kvedValidation = computed(() => result.value?.kved_validation);
 const generalSystem = computed(() => result.value?.general_system);
 const overall = computed(() => result.value?.overall_recommendation);
+const snapshot = computed(() => result.value?.snapshot);
 
-const headlineResult = computed(() => {
+const recommendationLabel = computed(() => {
   if (!overall.value) return null;
   if (overall.value.recommended_tax_system === 'general') {
-    const vat = generalSystem.value?.with_vat;
-    return {
-      title: vat ? 'Загальна система з ПДВ' : 'Загальна система',
-      group: null,
-      tax: overall.value.recommended_annual_tax_uah,
-    };
+    return generalSystem.value?.with_vat
+      ? 'Загальна система (з ПДВ)'
+      : 'Загальна система';
   }
-  return {
-    title: `Спрощена система — ${overall.value.recommended_fop_group} група`,
-    group: overall.value.recommended_fop_group,
-    tax: overall.value.recommended_annual_tax_uah,
-  };
+  return `Спрощена система, ${overall.value.recommended_fop_group} група`;
+});
+
+const recommendationTax = computed(() => overall.value?.recommended_annual_tax_uah);
+
+const methodologyLine = computed(() => {
+  if (!result.value) return '';
+  const income = formatUah(snapshot.value?.projected_annual_income_uah);
+  return `За операціями за ${periodLabel.value} (прогноз доходу ${income}) порівняно спрощену та загальну системи.`;
+});
+
+const keyAlerts = computed(() => {
+  const items = [];
+  if (kvedValidation.value?.blocks_simplified_system) {
+    const codes = (kvedValidation.value.simplified_violations || [])
+      .slice(0, 2)
+      .map((v) => v.user_code)
+      .join(', ');
+    items.push({
+      type: 'warn',
+      text: `КВЕД обмежує спрощену систему${codes ? ` (${codes})` : ''}.`,
+    });
+  } else if (kvedChecked.value && !hasKveds.value) {
+    items.push({
+      type: 'info',
+      text: 'КВЕД не вказані — перевірка кодів не виконувалась.',
+    });
+  }
+  if (criteria.value?.is_b2b_or_foreign) {
+    items.push({ type: 'info', text: 'B2B / іноземні клієнти — групи 1–2 не розглядались.' });
+  }
+  return items;
+});
+
+const comparisonRows = computed(() => {
+  const rows = [];
+  const eligibleSimplified = groups.value.filter((g) => g.eligible && g.estimatedAnnualTaxUah != null);
+  for (const g of eligibleSimplified) {
+    rows.push({
+      id: `g${g.group}`,
+      label: `Спрощена, ${g.group} гр.`,
+      tax: g.estimatedAnnualTaxUah,
+      recommended:
+        overall.value?.recommended_tax_system === 'simplified' &&
+        overall.value?.recommended_fop_group === g.group,
+    });
+  }
+  if (generalSystem.value?.estimated_annual_tax_uah != null) {
+    rows.push({
+      id: 'general',
+      label: generalSystem.value.with_vat ? 'Загальна (з ПДВ)' : 'Загальна',
+      tax: generalSystem.value.estimated_annual_tax_uah,
+      recommended: overall.value?.recommended_tax_system === 'general',
+    });
+  }
+  return rows.sort((a, b) => (a.tax ?? 0) - (b.tax ?? 0));
 });
 </script>
 
 <template>
-  <section class="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-10 space-y-8">
-    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-      <div class="flex items-start gap-4">
-        <div class="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100/50 shrink-0">
-          <ClipboardList :size="28" stroke-width="2.5" />
+  <section class="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 space-y-6">
+    <!-- Вступ -->
+    <div class="space-y-3">
+      <div class="flex items-start gap-3">
+        <div class="w-11 h-11 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+          <Sparkles :size="22" stroke-width="2.5" />
         </div>
         <div>
-          <h2 class="text-2xl font-black text-gray-900 tracking-tight">Рекомендація системи оподаткування</h2>
-          <p class="text-sm text-gray-500 font-medium mt-1">
-            Операції, КВЕД, найм, B2B/іноземні — період: {{ periodLabel }}
+          <h2 class="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+            Рекомендація щодо оподаткування
+          </h2>
+          <p class="text-sm text-gray-600 mt-1.5 leading-relaxed max-w-2xl">
+            Система аналізує ваші фінансові операції, оцінює податкове навантаження для різних
+            систем оподаткування та формує рекомендацію щодо найбільш вигідного варіанту.
           </p>
         </div>
       </div>
-      <button
-        type="button"
-        class="shrink-0 inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all disabled:opacity-60"
-        :disabled="loading"
-        @click="fetchRecommendation"
-      >
-        <Loader2 v-if="loading" :size="18" class="animate-spin" />
-        Дізнатися рекомендовану групу ФОП
-      </button>
-    </div>
 
-    <div
-      v-if="kvedChecked && hasKveds"
-      class="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-900"
-    >
-      <p class="font-black text-[10px] uppercase tracking-widest text-emerald-700 mb-2">Ваші КВЕД</p>
-      <p class="font-medium">
-        {{ userKvedList.map((k) => k.code).join(', ') }}
-      </p>
-    </div>
-
-    <div
-      v-else-if="kvedChecked && !hasKveds && !loading"
-      class="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-sm text-amber-900 flex gap-3"
-    >
-      <BookOpen class="shrink-0 mt-0.5" :size="18" />
-      <p>
-        Додайте КВЕД у
-        <RouterLink to="/settings" class="font-black text-amber-800 underline">налаштуваннях</RouterLink>
-        і натисніть «Зберегти» — без них перевірка заборонених кодів неможлива.
-      </p>
-    </div>
-
-    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-      <p class="text-xs font-black text-slate-500 uppercase tracking-widest">B2B / іноземні замовники</p>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
-          :class="b2bOverride === null ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
-          @click="b2bOverride = null"
+      <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+        <span class="px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100 font-medium">
+          Період: {{ periodLabel }}
+        </span>
+        <span
+          v-if="kvedChecked && hasKveds"
+          class="px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100 font-medium"
         >
-          Авто
-        </button>
-        <button
-          type="button"
-          class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
-          :class="b2bOverride === true ? 'bg-amber-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
-          @click="b2bOverride = true"
+          КВЕД: {{ userKvedList.map((k) => k.code).join(', ') }}
+        </span>
+        <RouterLink
+          v-else-if="kvedChecked && !hasKveds"
+          to="/settings"
+          class="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-100 text-amber-800 font-bold hover:bg-amber-100"
         >
-          Так (IT / QA / ЗЕД)
-        </button>
-        <button
-          type="button"
-          class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
-          :class="b2bOverride === false ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
-          @click="b2bOverride = false"
-        >
-          Ні
-        </button>
+          Додати КВЕД →
+        </RouterLink>
       </div>
     </div>
+
+    <!-- Налаштування розрахунку (компактно) -->
+    <details class="group rounded-xl border border-gray-100 bg-gray-50/50">
+      <summary class="flex items-center gap-2 px-4 py-3 cursor-pointer list-none text-sm font-bold text-gray-600">
+        <Settings2 :size="16" class="text-gray-400" />
+        Параметри розрахунку
+        <ChevronDown :size="16" class="ml-auto text-gray-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div class="px-4 pb-4 pt-0">
+        <p class="text-xs text-gray-500 mb-2">B2B / іноземні замовники (за замовчуванням — авто)</p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="b2bOverride === null ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
+            @click="b2bOverride = null"
+          >
+            Авто
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="b2bOverride === true ? 'bg-amber-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
+            @click="b2bOverride = true"
+          >
+            Так
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            :class="b2bOverride === false ? 'bg-emerald-600 text-white' : 'bg-white text-gray-500 border border-gray-200'"
+            @click="b2bOverride = false"
+          >
+            Ні
+          </button>
+        </div>
+      </div>
+    </details>
+
+    <button
+      type="button"
+      class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200/80 transition-all disabled:opacity-60"
+      :disabled="loading"
+      @click="fetchRecommendation"
+    >
+      <Loader2 v-if="loading" :size="18" class="animate-spin" />
+      {{ loading ? 'Аналізуємо…' : 'Отримати рекомендацію' }}
+    </button>
 
     <p v-if="error" class="text-sm font-bold text-red-600 flex items-center gap-2">
       <AlertTriangle :size="16" />
       {{ error }}
     </p>
 
-    <div v-if="result && headlineResult" class="space-y-8 animate-fade-in">
+    <!-- Результат -->
+    <div v-if="result && recommendationLabel" class="space-y-4 animate-fade-in">
       <div
-        class="p-6 sm:p-8 rounded-3xl border-2"
-        :class="overall.recommended_tax_system === 'general' ? 'border-amber-200 bg-amber-50/50' : 'border-indigo-200 bg-indigo-50/50'"
+        class="p-5 sm:p-6 rounded-2xl border-2"
+        :class="
+          overall.recommended_tax_system === 'general'
+            ? 'border-amber-200 bg-gradient-to-br from-amber-50/80 to-white'
+            : 'border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-white'
+        "
       >
-        <p class="text-[10px] font-black uppercase tracking-widest mb-2 text-gray-500">Підсумок</p>
-        <p class="text-2xl sm:text-3xl font-black text-gray-900">{{ headlineResult.title }}</p>
-        <p v-if="headlineResult.tax != null" class="text-sm font-bold text-gray-700 mt-2">
-          Оціночне річне навантаження: {{ formatUah(headlineResult.tax) }}
+        <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">
+          Рекомендований варіант
         </p>
-        <p class="text-sm text-gray-600 mt-2">{{ evaluation?.focusSummary?.headline }}</p>
+        <p class="text-2xl font-black text-gray-900">{{ recommendationLabel }}</p>
+        <p v-if="recommendationTax != null" class="text-base font-bold text-gray-700 mt-2">
+          Орієнтовне навантаження на рік: {{ formatUah(recommendationTax) }}
+        </p>
+        <p class="text-sm text-gray-500 mt-3">{{ methodologyLine }}</p>
       </div>
 
-      <div
-        v-if="kvedValidation?.blocks_simplified_system"
-        class="p-5 rounded-2xl bg-red-50 border border-red-100 text-sm text-red-900"
-      >
-        <p class="font-black mb-2">КВЕД блокує спрощену систему</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li v-for="v in kvedValidation.simplified_violations" :key="v.user_code + v.pattern">
-            {{ v.user_code }} — {{ v.title }}
+      <ul v-if="keyAlerts.length" class="space-y-2">
+        <li
+          v-for="(alert, i) in keyAlerts"
+          :key="i"
+          class="text-sm px-3 py-2 rounded-xl border"
+          :class="
+            alert.type === 'warn'
+              ? 'bg-red-50 border-red-100 text-red-800'
+              : 'bg-amber-50/80 border-amber-100 text-amber-900'
+          "
+        >
+          {{ alert.text }}
+        </li>
+      </ul>
+
+      <!-- Стисле порівняння -->
+      <div v-if="comparisonRows.length" class="rounded-xl border border-gray-100 overflow-hidden">
+        <p class="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50">
+          Порівняння навантаження
+        </p>
+        <ul class="divide-y divide-gray-50">
+          <li
+            v-for="row in comparisonRows"
+            :key="row.id"
+            class="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+            :class="row.recommended ? 'bg-indigo-50/50' : ''"
+          >
+            <span class="font-bold text-gray-800">
+              {{ row.label }}
+              <span
+                v-if="row.recommended"
+                class="ml-2 text-[10px] uppercase tracking-wider text-indigo-600"
+              >
+                рекомендовано
+              </span>
+            </span>
+            <span class="font-black tabular-nums text-gray-900 shrink-0">{{ formatUah(row.tax) }}</span>
           </li>
         </ul>
       </div>
 
-      <div v-if="generalSystem" class="p-5 rounded-2xl border border-amber-100 bg-amber-50/30 space-y-3">
-        <p class="text-xs font-black text-amber-800 uppercase tracking-widest">Загальна система</p>
-        <p class="text-sm text-gray-700">
-          {{ generalSystem.note }}
-        </p>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <div>
-            <span class="text-gray-400 text-[10px] font-black uppercase block">ПДФО</span>
-            <span class="font-bold">{{ formatUah(generalSystem.breakdown?.pit_uah) }}</span>
+      <!-- Деталі за бажанням -->
+      <details class="group rounded-xl border border-gray-100">
+        <summary class="px-4 py-3 cursor-pointer list-none text-sm font-bold text-gray-600 flex items-center gap-2">
+          <ChevronDown
+            :size="16"
+            class="text-gray-400 transition-transform group-open:rotate-180"
+          />
+          Детальний розбір (групи, ліміти, причини)
+        </summary>
+        <div class="px-4 pb-4 space-y-4 border-t border-gray-50">
+          <div v-if="criteria" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="p-3 rounded-lg bg-gray-50">
+              <span class="text-gray-400 block mb-0.5">Дохід</span>
+              <span class="font-bold">{{ formatUah(criteria.projected_annual_income_uah) }}</span>
+            </div>
+            <div class="p-3 rounded-lg bg-gray-50">
+              <span class="text-gray-400 block mb-0.5">Наймані</span>
+              <span class="font-bold">{{ criteria.employees_count }}</span>
+            </div>
+            <div class="p-3 rounded-lg bg-gray-50">
+              <span class="text-gray-400 block mb-0.5">B2B</span>
+              <span class="font-bold">{{ criteria.is_b2b_or_foreign ? 'Так' : 'Ні' }}</span>
+            </div>
+            <div class="p-3 rounded-lg bg-gray-50">
+              <span class="text-gray-400 block mb-0.5">Ліміти 1–3</span>
+              <span class="font-bold">
+                {{ criteria.income_within_limits?.g1 ? '✓' : '✗' }}
+                {{ criteria.income_within_limits?.g2 ? '✓' : '✗' }}
+                {{ criteria.income_within_limits?.g3 ? '✓' : '✗' }}
+              </span>
+            </div>
           </div>
-          <div>
-            <span class="text-gray-400 text-[10px] font-black uppercase block">ВЗ</span>
-            <span class="font-bold">{{ formatUah(generalSystem.breakdown?.military_tax_uah) }}</span>
-          </div>
-          <div>
-            <span class="text-gray-400 text-[10px] font-black uppercase block">ЄСВ</span>
-            <span class="font-bold">{{ formatUah(generalSystem.breakdown?.esv_uah) }}</span>
-          </div>
-          <div v-if="generalSystem.with_vat">
-            <span class="text-gray-400 text-[10px] font-black uppercase block">ПДВ (~20%)</span>
-            <span class="font-bold text-amber-800">{{ formatUah(generalSystem.breakdown?.vat_estimate_uah) }}</span>
-          </div>
-        </div>
-        <p v-if="generalSystem.with_vat" class="text-xs text-amber-800 font-medium">
-          Оборот {{ formatUah(generalSystem.gross_income_uah) }} &gt;
-          {{ formatUah(generalSystem.vat_threshold_uah) }} — модель з обов’язковим ПДВ.
-        </p>
-      </div>
 
-      <div
-        v-if="kvedValidation?.allow"
-        class="p-4 rounded-2xl bg-slate-50 border border-slate-100 grid grid-cols-2 sm:grid-cols-5 gap-3 text-center"
-      >
-        <div>
-          <p class="text-[9px] font-black text-gray-400 uppercase">1 гр.</p>
-          <p class="font-black" :class="kvedValidation.allow.group_1 ? 'text-emerald-600' : 'text-red-600'">
-            {{ kvedValidation.allow.group_1 ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-        <div>
-          <p class="text-[9px] font-black text-gray-400 uppercase">2 гр.</p>
-          <p class="font-black" :class="kvedValidation.allow.group_2 ? 'text-emerald-600' : 'text-red-600'">
-            {{ kvedValidation.allow.group_2 ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-        <div>
-          <p class="text-[9px] font-black text-gray-400 uppercase">3 гр.</p>
-          <p class="font-black" :class="kvedValidation.allow.group_3 ? 'text-emerald-600' : 'text-red-600'">
-            {{ kvedValidation.allow.group_3 ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-        <div>
-          <p class="text-[9px] font-black text-gray-400 uppercase">4 гр.</p>
-          <p class="font-black" :class="kvedValidation.allow.group_4 ? 'text-emerald-600' : 'text-red-600'">
-            {{ kvedValidation.allow.group_4 ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-        <div>
-          <p class="text-[9px] font-black text-gray-400 uppercase">Спрощ.</p>
-          <p class="font-black" :class="kvedValidation.allow.simplified_system ? 'text-emerald-600' : 'text-red-600'">
-            {{ kvedValidation.allow.simplified_system ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-      </div>
-
-      <div v-if="criteria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Дохід (прогноз)</p>
-          <p class="text-lg font-black text-gray-900 mt-1">{{ formatUah(criteria.projected_annual_income_uah) }}</p>
-        </div>
-        <div class="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Наймані</p>
-          <p class="text-lg font-black text-gray-900 mt-1">{{ criteria.employees_count }}</p>
-        </div>
-        <div class="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">B2B / іноземні</p>
-          <p class="text-lg font-black mt-1" :class="criteria.is_b2b_or_foreign ? 'text-amber-700' : 'text-emerald-700'">
-            {{ criteria.is_b2b_or_foreign ? 'Так' : 'Ні' }}
-          </p>
-        </div>
-        <div class="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ліміти L₁–L₃</p>
-          <p class="text-[11px] font-bold text-gray-700 mt-1">
-            1 {{ criteria.income_within_limits?.g1 ? '✓' : '✗' }}
-            2 {{ criteria.income_within_limits?.g2 ? '✓' : '✗' }}
-            3 {{ criteria.income_within_limits?.g3 ? '✓' : '✗' }}
-          </p>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto rounded-2xl border border-gray-100">
-        <table class="w-full text-left text-sm">
-          <thead>
-            <tr class="bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400">
-              <th class="px-5 py-4">Група (спрощена)</th>
-              <th class="px-5 py-4">Статус</th>
-              <th class="px-5 py-4">Податки / рік</th>
-              <th class="px-5 py-4">Причина</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-50">
-            <tr
-              v-for="row in groups"
-              :key="row.group"
-              :class="row.group === evaluation?.recommendedGroup ? 'bg-indigo-50/60' : ''"
+          <div class="overflow-x-auto rounded-lg border border-gray-100 text-sm">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="bg-gray-50 text-[10px] font-black uppercase text-gray-400">
+                  <th class="px-3 py-2">Група</th>
+                  <th class="px-3 py-2">Допустима</th>
+                  <th class="px-3 py-2">Податки/рік</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                <tr
+                  v-for="row in groups"
+                  :key="row.group"
+                  :class="row.group === evaluation?.recommendedGroup ? 'bg-indigo-50/40' : ''"
+                >
+                  <td class="px-3 py-2 font-bold">{{ row.group }}</td>
+                  <td class="px-3 py-2">{{ row.eligible ? 'Так' : 'Ні' }}</td>
+                  <td class="px-3 py-2 font-bold tabular-nums">
+                    {{ row.estimatedAnnualTaxUah != null ? formatUah(row.estimatedAnnualTaxUah) : '—' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              v-for="row in groups.filter((g) => !g.eligible && g.disqualifyReason)"
+              :key="'r' + row.group"
+              class="px-3 py-2 text-xs text-gray-500 border-t border-gray-50"
             >
-              <td class="px-5 py-4 font-black">{{ row.group }}</td>
-              <td class="px-5 py-4">
-                <span v-if="row.eligible" class="inline-flex items-center gap-1 text-emerald-700 font-bold text-xs">
-                  <CheckCircle2 :size="14" /> Так
-                </span>
-                <span v-else class="inline-flex items-center gap-1 text-red-600 font-bold text-xs">
-                  <XCircle :size="14" /> Ні
-                </span>
-              </td>
-              <td class="px-5 py-4 font-bold tabular-nums">
-                {{ row.estimatedAnnualTaxUah != null ? formatUah(row.estimatedAnnualTaxUah) : '—' }}
-              </td>
-              <td class="px-5 py-4 text-xs text-gray-500 max-w-md">{{ row.disqualifyReason || '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              <span class="font-bold text-gray-700">{{ row.group }} група:</span>
+              {{ row.disqualifyReason }}
+            </p>
+          </div>
 
-      <ul v-if="evaluation?.recommendationReasons?.length" class="space-y-2 text-sm text-gray-600">
-        <li v-for="(r, i) in evaluation.recommendationReasons" :key="i" class="flex gap-2">
-          <span class="text-indigo-400 shrink-0">•</span>
-          <span>{{ r }}</span>
-        </li>
-      </ul>
+          <ul v-if="evaluation?.recommendationReasons?.length" class="text-xs text-gray-500 space-y-1">
+            <li v-for="(r, i) in evaluation.recommendationReasons" :key="i">• {{ r }}</li>
+          </ul>
+        </div>
+      </details>
 
-      <p class="text-[11px] text-gray-400 italic border-t border-gray-100 pt-4">{{ result.disclaimer }}</p>
+      <p class="text-[11px] text-gray-400 leading-relaxed">
+        Орієнтовний розрахунок. Узгодьте рішення з бухгалтером або ДПС.
+      </p>
     </div>
   </section>
 </template>
 
 <style scoped>
+details summary::-webkit-details-marker {
+  display: none;
+}
 .animate-fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fadeIn 0.35s ease-out;
 }
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 </style>
