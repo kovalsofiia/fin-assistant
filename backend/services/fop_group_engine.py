@@ -2,11 +2,17 @@
 Движок підбору групи ФОП (фази A/B).
 
 Критичні правила:
-- is_b2b_or_foreign → блокує 1 та 2 групи (ЗЕД, іноземні замовники, B2B з юрособами на загальній).
-- employees_count > 0 → блокує 1 групу.
-- employees_count > 10 → блокує 2 групу.
+- is_b2b_or_foreign → блокує 1 та 2 групи.
+- employees_count > 0 → блокує 1 групу; > 10 → блокує 2 групу.
 - projectedAnnualIncomeUah > L_x → блокує групу x (1, 2, 3).
+- 3 група: ПДВ лише за добровільним прапорцем (expectsVatRegistration), не від 1 млн.
+- 1 млн грн (vatThreshold) → обов'язкове ПДВ лише на загальній системі.
+- Дохід > L₃ (абсолютний ліміт спрощеної) → 15% з перевищення, втрата спрощеної,
+  перехід на загальну з наступного кварталу → там обов'язкове ПДВ (> 1 млн).
 """
+
+# Ставка ЄП з суми перевищення абсолютного ліміту спрощеної (орієнтир ПКУ)
+SIMPLIFIED_EXCESS_RATE = 0.15
 
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -50,11 +56,41 @@ def is_b2b_or_foreign(answers: Dict[str, Any]) -> bool:
 
 
 def _plans_vat_payer(answers: Dict[str, Any]) -> bool:
+    """Добровільний платник ПДВ на 3 групі (налаштування is_vat_payer)."""
     return bool(answers.get("expectsVatRegistration"))
 
 
-def _exceeds_vat_supply_threshold(answers: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
-    return _annual_income(answers) >= ctx["vatThreshold"]
+def g3_effective_vat_payer(answers: Dict[str, Any]) -> bool:
+    """3 група: ставка 3% ЄП лише якщо користувач сам увімкнув ПДВ. Дохід не форсує ПДВ."""
+    return _plans_vat_payer(answers)
+
+
+def exceeds_simplified_absolute_limit(
+    answers: Dict[str, Any], ctx: Dict[str, Any]
+) -> bool:
+    """Перевищення глобального ліміту спрощеної (напр. 1167 МЗП / L₃)."""
+    return _annual_income(answers) > ctx["limits"]["g3"]
+
+
+def requires_general_system_transition(
+    answers: Dict[str, Any], ctx: Dict[str, Any]
+) -> bool:
+    return exceeds_simplified_absolute_limit(answers, ctx)
+
+
+def vat_mandatory_on_general_system(
+    answers: Dict[str, Any], ctx: Dict[str, Any]
+) -> bool:
+    """Поріг 1 млн — лише для загальної системи (не для 3 групи спрощеної)."""
+    return _annual_income(answers) > ctx["vatThreshold"]
+
+
+def simplified_excess_tax_uah(answers: Dict[str, Any], ctx: Dict[str, Any]) -> float:
+    income = _annual_income(answers)
+    limit = ctx["limits"]["g3"]
+    if income <= limit:
+        return 0.0
+    return round((income - limit) * SIMPLIFIED_EXCESS_RATE, 2)
 
 
 def must_use_group3(answers: Dict[str, Any], ctx: Dict[str, Any]) -> bool:
@@ -124,7 +160,12 @@ def _eligible_group3(answers: Dict[str, Any], ctx: Dict[str, Any]) -> Tuple[bool
     income = _annual_income(answers)
     exceeded, reason = _income_exceeds_limit(income, ctx["limits"]["g3"], 3, ctx)
     if exceeded:
-        return False, reason + " Можлива загальна система."
+        return (
+            False,
+            reason
+            + " Перевищення абсолютного ліміту спрощеної: 15% з надлишку, "
+            "з наступного кварталу — загальна система з обов’язковим ПДВ.",
+        )
     if (
         answers.get("activity") == "agriculture"
         and _has_land_for_group4(answers)
@@ -176,12 +217,20 @@ def build_criteria_summary(answers: Dict[str, Any], ctx: Dict[str, Any]) -> Dict
         "is_b2b_or_foreign": b2b,
         "blocks_groups_1_and_2": b2b,
         "must_use_group3": must_use_group3(answers, ctx),
+        "exceeds_simplified_absolute_limit": exceeds_simplified_absolute_limit(
+            answers, ctx
+        ),
+        "requires_general_transition": requires_general_system_transition(
+            answers, ctx
+        ),
+        "g3_vat_voluntary": g3_effective_vat_payer(answers),
+        "vat_mandatory_if_general": vat_mandatory_on_general_system(answers, ctx),
     }
 
 
 def estimate_annual_tax_load(group: int, answers: Dict[str, Any], ctx: Dict[str, Any]) -> float:
     d = _annual_income(answers)
-    inc_pct = ctx["g3"]["epVat"] if _plans_vat_payer(answers) else ctx["g3"]["epNonVat"]
+    inc_pct = ctx["g3"]["epVat"] if g3_effective_vat_payer(answers) else ctx["g3"]["epNonVat"]
     mil_pct = ctx["g3"]["militaryPct"]
 
     if group == 1:
@@ -326,11 +375,16 @@ def _build_recommendation_reasons(
         else:
             reasons.append("Сільгосп без даних землі — орієнтир 3 група.")
 
-    if _plans_vat_payer(answers):
-        reasons.append("Платник ПДВ — орієнтир 3 група.")
-    elif _exceeds_vat_supply_threshold(answers, ctx):
+    if requires_general_system_transition(answers, ctx):
+        excess = simplified_excess_tax_uah(answers, ctx)
         reasons.append(
-            f"Дохід від порогу ПДВ ({ctx['vatThreshold']:,.0f} грн) — перевірте реєстрацію."
+            f"Дохід перевищив абсолютний ліміт спрощеної ({ctx['limits']['g3']:,.0f} грн): "
+            f"орієнтовно {excess:,.0f} грн за ставкою 15% з перевищення; "
+            "з наступного кварталу — загальна система, далі обов’язкове ПДВ (оборот > 1 млн грн)."
+        )
+    elif _plans_vat_payer(answers):
+        reasons.append(
+            "Платник ПДВ на 3 групі (добровільно): ЄП 3% + облік ПДВ; дохід не змушує реєструватися."
         )
 
     if mode == "lowest_tax" and recommended_group is not None:
@@ -410,9 +464,24 @@ def _package_evaluation(
         "criteria": criteria,
         "fxNote": fx_note,
         "mustUseGroup3": must_use_group3(answers, ctx),
-        "vatRegistrationWarning": (
-            not _plans_vat_payer(answers) and _exceeds_vat_supply_threshold(answers, ctx)
+        "simplifiedLimitTransitionWarning": requires_general_system_transition(
+            answers, ctx
         ),
+        # 1 млн → ПДВ лише після переходу на загальну (доход уже > L₃ > 1 млн)
+        "vatRegistrationWarning": requires_general_system_transition(answers, ctx),
+        "simplifiedTransition": {
+            "exceeded_absolute_limit": requires_general_system_transition(
+                answers, ctx
+            ),
+            "limit_uah": ctx["limits"]["g3"],
+            "excess_income_uah": round(
+                max(0.0, _annual_income(answers) - ctx["limits"]["g3"]), 2
+            ),
+            "excess_tax_15pct_uah": simplified_excess_tax_uah(answers, ctx),
+            "general_vat_mandatory_after_transition": vat_mandatory_on_general_system(
+                answers, ctx
+            ),
+        },
     }
 
 

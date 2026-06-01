@@ -266,9 +266,15 @@ const getCategoryName = (id) => {
         </div>
         <div class="flex-grow">
           <p class="font-black text-sm uppercase tracking-widest" v-if="w === 'LIMIT_APPROACHING'">Наближення ліміту доходу</p>
+          <p class="font-black text-sm uppercase tracking-widest" v-else-if="w === 'SIMPLIFIED_SYSTEM_LIMIT_EXCEEDED'">Ліміт спрощеної системи</p>
           <p class="font-black text-sm uppercase tracking-widest" v-else-if="w === 'VAT_REGISTRATION_REQUIRED'">Необхідна реєстрація ПДВ</p>
           <p class="text-xs font-medium opacity-80" v-if="w === 'LIMIT_APPROACHING'">Ви використали понад 90% річного ліміту вашої групи. Стежте за наступними поступленнями.</p>
-          <p class="text-xs font-medium opacity-80" v-else-if="w === 'VAT_REGISTRATION_REQUIRED'">Річний дохід перевищив 1 млн грн. Ви повинні зареєструватися платником ПДВ.</p>
+          <p class="text-xs font-medium opacity-80" v-else-if="w === 'SIMPLIFIED_SYSTEM_LIMIT_EXCEEDED'">
+            Перевищено абсолютний ліміт спрощеної системи. Очікується перехід на загальну з наступного кварталу та обов’язкове ПДВ.
+          </p>
+          <p class="text-xs font-medium opacity-80" v-else-if="w === 'VAT_REGISTRATION_REQUIRED'">
+            На загальній системі при обороті понад 1 млн грн потрібна реєстрація платником ПДВ.
+          </p>
         </div>
       </div>
     </div>

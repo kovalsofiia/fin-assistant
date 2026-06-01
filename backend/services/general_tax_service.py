@@ -30,7 +30,7 @@ class GeneralTaxService:
         Загальна система:
         - база = max(0, дохід - витрати)
         - ПДФО 18% + військовий збір 5% від бази + ЄСВ
-        - якщо gross > 1 млн (або force_vat) — додається орієнтовний компонент ПДВ 20% від gross
+        - ПДВ 20% від gross лише тут: поріг 1 млн не стосується 3 групи спрощеної.
         """
         gross = max(0.0, float(gross_income_uah))
         expenses = max(0.0, float(deductible_expenses_uah))

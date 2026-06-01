@@ -133,8 +133,19 @@ const methodologyLine = computed(() => {
   return `За операціями за ${periodLabel.value} (прогноз доходу ${income}) порівняно спрощену та загальну системи.`;
 });
 
+const simplifiedTransition = computed(() => result.value?.simplified_transition);
+
 const keyAlerts = computed(() => {
   const items = [];
+  const st = simplifiedTransition.value;
+  if (st?.exceeded_absolute_limit) {
+    items.push({
+      type: 'warn',
+      text:
+        `Перевищено ліміт спрощеної (${formatUah(st.limit_uah)}): орієнтовно ${formatUah(st.excess_tax_15pct_uah)} за 15% з надлишку; `
+        + 'з наступного кварталу — загальна система з обов’язковим ПДВ.',
+    });
+  }
   if (kvedValidation.value?.blocks_simplified_system) {
     const codes = (kvedValidation.value.simplified_violations || [])
       .slice(0, 2)

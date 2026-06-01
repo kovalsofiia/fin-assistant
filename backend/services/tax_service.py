@@ -80,8 +80,13 @@ class TaxService:
         if limit > 0 and annual_income >= (limit * 0.9):
             warnings.append("LIMIT_APPROACHING")
             
-        # VAT Registration Warning
-        if not settings.is_vat_payer and annual_income > 1000000.0:
+        limit_g3 = float(rules.get("limit_g3") or 0)
+        vat_threshold = float(rules.get("vat_supply_threshold") or 1_000_000.0)
+        tax_system = getattr(settings.tax_system, "value", settings.tax_system) or "simplified"
+
+        if limit_g3 > 0 and annual_income > limit_g3:
+            warnings.append("SIMPLIFIED_SYSTEM_LIMIT_EXCEEDED")
+        elif tax_system == "general" and not settings.is_vat_payer and annual_income > vat_threshold:
             warnings.append("VAT_REGISTRATION_REQUIRED")
             
         return warnings

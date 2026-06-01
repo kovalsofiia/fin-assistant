@@ -144,11 +144,17 @@ class FopRecommendationService:
             }
 
         if simplified_group is None and general_tax is not None:
+            criteria = evaluation.get("criteria") or {}
+            reason = (
+                "simplified_absolute_limit_exceeded"
+                if criteria.get("requires_general_transition")
+                else "no_simplified_group_eligible"
+            )
             return {
                 "recommended_tax_system": "general",
                 "recommended_fop_group": None,
                 "recommended_annual_tax_uah": general_tax,
-                "reason": "no_simplified_group_eligible",
+                "reason": reason,
             }
 
         if (
@@ -213,10 +219,13 @@ class FopRecommendationService:
         if not answers.get("esvCoveredElsewhere"):
             esv_annual = float(ctx.get("esvMonthly", 0)) * 12
 
+        projected_income = float(snapshot["projected_annual_income_uah"])
+        force_general_vat = projected_income > float(ctx.get("limits", {}).get("g3", 0))
         general_estimate = GeneralTaxService.estimate_annual_tax(
-            gross_income_uah=snapshot["projected_annual_income_uah"],
+            gross_income_uah=projected_income,
             deductible_expenses_uah=snapshot.get("expense_fop_uah", 0),
             esv_annual_uah=esv_annual,
+            force_vat=force_general_vat if force_general_vat else None,
             vat_threshold=float(ctx.get("vatThreshold", 1_000_000)),
         )
 
@@ -265,7 +274,8 @@ class FopRecommendationService:
             },
             "disclaimer": (
                 "Орієнтовний розрахунок за операціями, КВЕД і налаштуваннями. "
-                "Загальна система з ПДВ — якщо оборот > 1 млн грн за 12 міс. "
-                "Узгодьте з бухгалтером."
+                "3 група: ПДВ добровільно (5% або 3%+ПДВ). Поріг 1 млн — обов’язкове ПДВ на загальній. "
+                "Перевищення ліміту спрощеної — перехід на загальну. Узгодьте з бухгалтером."
             ),
+            "simplified_transition": evaluation.get("simplifiedTransition"),
         }
