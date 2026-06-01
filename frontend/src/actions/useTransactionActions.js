@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
+import { useAccountStore } from '@/stores/accountStore';
 import api from '@/services/api';
 
 export function useTransactionActions(userId, onUpdateCallback = null) {
@@ -21,9 +22,23 @@ export function useTransactionActions(userId, onUpdateCallback = null) {
         description: '',
         currency: 'UAH',
         manual_rate: '',
-        isZed: false
+        isZed: false,
+        is_fop: true,
+        account_id: '',
     };
     const form = ref({ ...initialFormState });
+
+    const applyDefaultAccount = () => {
+        const accountStore = useAccountStore();
+        const preferred =
+            form.value.type === 'income'
+                ? accountStore.businessAccounts[0] || accountStore.accounts[0]
+                : accountStore.accounts[0];
+        if (preferred) {
+            form.value.account_id = preferred.id;
+            form.value.is_fop = preferred.is_business;
+        }
+    };
 
     const fetchFopSettings = async () => {
         if (!userId.value) return;
@@ -35,9 +50,14 @@ export function useTransactionActions(userId, onUpdateCallback = null) {
         }
     };
 
-    const openCreateModal = () => {
+    const openCreateModal = async () => {
         editingTxId.value = null;
         form.value = { ...initialFormState };
+        const accountStore = useAccountStore();
+        if (!accountStore.accounts.length) {
+            await accountStore.fetchAccounts();
+        }
+        applyDefaultAccount();
         isModalOpen.value = true;
     };
 
@@ -58,7 +78,9 @@ export function useTransactionActions(userId, onUpdateCallback = null) {
                 date: form.value.date,
                 description: form.value.description,
                 currency: form.value.isZed ? form.value.currency : 'UAH',
-                manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null
+                manual_rate: (form.value.isZed && form.value.manual_rate) ? parseFloat(form.value.manual_rate) : null,
+                is_fop: form.value.is_fop !== false,
+                account_id: form.value.account_id || null,
             };
 
             if (editingTxId.value) {

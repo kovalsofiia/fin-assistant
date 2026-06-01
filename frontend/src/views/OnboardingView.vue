@@ -6,6 +6,7 @@ import { supabase } from '@/services/supabase';
 import { useTaxRulesStore } from '@/stores/taxRulesStore';
 import { APP_CONSTANTS } from '@/constants/appConstants';
 import { KVED_SECTIONS } from '@/constants/kveds';
+import { setStoredKveds, toKvedSyncPayload } from '@/utils/kvedStorage';
 import { 
   ArrowLeft, 
   Check, 
@@ -163,7 +164,12 @@ const finishOnboarding = async () => {
       await api.patch(`/settings/${user.id}`, settingsData);
 
       // Зберігаємо КВЕДи локально
-      localStorage.setItem(`kveds_${user.id}`, JSON.stringify(formData.value.selectedKveds));
+      setStoredKveds(user.id, formData.value.selectedKveds);
+      try {
+        await api.syncMyKveds(toKvedSyncPayload(formData.value.selectedKveds));
+      } catch (e) {
+        console.warn('KVED sync on onboarding failed', e);
+      }
     }
 
     // 3. Перехід на дашборд

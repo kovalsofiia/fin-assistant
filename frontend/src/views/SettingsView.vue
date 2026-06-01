@@ -11,17 +11,19 @@ import { useNotificationStore } from '@/stores/notificationStore';
 
 // Components
 import CategoryManager from '@/components/settings/CategoryManager.vue';
+import AccountManager from '@/components/settings/AccountManager.vue';
 import ProfileForm from '@/components/settings/ProfileForm.vue';
 import FopSettingsForm from '@/components/settings/FopSettingsForm.vue';
 import KvedSelector from '@/components/settings/KvedSelector.vue';
+import {
+  getStoredKveds,
+  setStoredKveds,
+  toKvedSyncPayload,
+} from '@/utils/kvedStorage';
 
 const txStore = useTransactionStore();
 const taxRulesStore = useTaxRulesStore();
 const router = useRouter();
-
-function goFopQuiz() {
-  router.push({ name: 'fop-group-quiz' });
-}
 
 function goTaxRulesAdmin() {
   router.push({ name: 'admin-tax-rules' });
@@ -120,9 +122,29 @@ const loadData = async () => {
       }
     }
 
-    const storedKveds = localStorage.getItem(`kveds_${userId.value}`);
-    if (storedKveds) {
-      userKveds.value = JSON.parse(storedKveds);
+    const stored = getStoredKveds(userId.value);
+    try {
+      const kvedRes = await api.getMyKveds();
+      const fromApi = kvedRes.data?.kveds || [];
+      if (fromApi.length) {
+        userKveds.value = fromApi.map((k) => {
+          const local = stored.find((s) => s.code === k.code);
+          return { code: k.code, name: k.name || local?.name || '' };
+        });
+        setStoredKveds(userId.value, userKveds.value);
+      } else if (stored.length) {
+        userKveds.value = stored;
+        try {
+          await api.syncMyKveds(toKvedSyncPayload(stored));
+        } catch (syncErr) {
+          console.warn('KVED backfill to DB failed', syncErr);
+        }
+      }
+    } catch (e) {
+      if (stored.length) {
+        userKveds.value = stored;
+      }
+      console.warn('KVED from API not loaded', e);
     }
 
     await txStore.fetchCategories();
@@ -182,7 +204,27 @@ const saveChanges = async () => {
       });
     }
 
-    localStorage.setItem(`kveds_${userId.value}`, JSON.stringify(userKveds.value));
+    setStoredKveds(userId.value, userKveds.value);
+
+    if (userKveds.value?.length) {
+      try {
+        await api.syncMyKveds(toKvedSyncPayload(userKveds.value));
+      } catch (kvedErr) {
+        const kvedMsg =
+          kvedErr.response?.data?.detail ||
+          'КВЕД збережено локально, але не синхронізовано з сервером';
+        notificationStore.showError(
+          typeof kvedMsg === 'string' ? kvedMsg : 'Помилка синхронізації КВЕД'
+        );
+        return;
+      }
+    } else {
+      try {
+        await api.syncMyKveds([]);
+      } catch {
+        /* порожній список — ігноруємо */
+      }
+    }
 
     notificationStore.showSuccess("Налаштування успішно збережено");
   } catch (error) {
@@ -212,10 +254,10 @@ onMounted(() => {
             v-if="profile.is_fop"
             type="button"
             class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
-            @click="goFopQuiz"
+            @click="router.push({ path: '/analytics', query: { tab: 'fop_group' } })"
           >
             <ClipboardList :size="18" stroke-width="2.5" />
-            Квіз: підібрати групу ФОП
+            Рекомендація групи ФОП
           </button>
           <button
             v-if="taxRulesStore.isAdmin"
@@ -238,6 +280,8 @@ onMounted(() => {
       
       <!-- Card: Profile -->
       <ProfileForm v-model="profile" />
+
+      <AccountManager v-if="userId" />
 
       <!-- Card: Category Management -->
       <CategoryManager 

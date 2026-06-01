@@ -1,9 +1,10 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, watch, onMounted } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { 
   Calendar, Tag, FileText, DollarSign, ArrowUpRight, ArrowDownLeft, Check, Info, 
-  CreditCard, User
+  CreditCard, User, Wallet
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -24,8 +25,21 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'add-category']);
 
 const txStore = useTransactionStore();
+const accountStore = useAccountStore();
 
 const form = props.modelValue;
+
+onMounted(() => {
+  if (!accountStore.accounts.length) {
+    accountStore.fetchAccounts();
+  }
+});
+
+const hasAccounts = computed(() => accountStore.accounts.length > 0);
+
+const selectedAccount = computed(() =>
+  form.account_id ? accountStore.accountById(form.account_id) : null
+);
 
 const availableCategories = computed(() => {
   const type = form.type;
@@ -65,20 +79,36 @@ watch(() => form.type, () => {
   setTimeout(() => autoSelectCategory(), 10);
 });
 
-// Auto-set account type based on category linking
+// Категорія → is_fop лише якщо рахунок не обрано
 watch(() => form.category_id, (newId) => {
-  if (!newId || !txStore.categories.all) return;
+  if (!newId || !txStore.categories.all || form.account_id) return;
   const category = txStore.categories.all.find(c => c.id === newId);
-  if (category) {
-    // We only automate this for income to avoid confusing users on expenses 
-    // (though expenses are usually not taxed anyway, this mainly helps with income)
-    if (form.type === 'income') {
-      form.is_fop = category.is_fop_only !== false;
-    }
+  if (category && form.type === 'income') {
+    form.is_fop = category.is_fop_only !== false;
   }
 });
 
+watch(
+  () => form.account_id,
+  (accountId) => {
+    if (!accountId) return;
+    const acc = accountStore.accountById(accountId);
+    if (!acc) return;
+    form.is_fop = acc.is_business;
+    if (acc.currency_code && acc.currency_code !== 'UAH') {
+      form.isZed = true;
+      form.currency = acc.currency_code;
+    }
+  }
+);
+
 const isZedRestricted = computed(() => {
+  if (selectedAccount.value && !selectedAccount.value.is_business) {
+    return false;
+  }
+  if (!selectedAccount.value && form.type === 'income' && !form.is_fop) {
+    return false;
+  }
   return props.fopSettings?.fop_group === 1 || props.fopSettings?.fop_group === 4;
 });
 
@@ -135,13 +165,56 @@ const isZedRestricted = computed(() => {
       </div>
     </div>
 
-    <!-- FOP vs Personal (Only for Income) -->
-    <div v-if="form.type === 'income'" class="space-y-3 animate-fade-in">
+    <!-- Рахунок / картка -->
+    <div v-if="hasAccounts" class="space-y-2 animate-fade-in">
+      <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
+        <Wallet :size="14" /> Рахунок
+      </label>
+      <select
+        v-model="form.account_id"
+        required
+        class="w-full px-5 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all font-bold text-gray-800"
+      >
+        <option value="" disabled>Оберіть рахунок</option>
+        <optgroup v-if="accountStore.businessAccounts.length" label="ФОП / бізнес">
+          <option
+            v-for="acc in accountStore.businessAccounts"
+            :key="acc.id"
+            :value="acc.id"
+          >
+            {{ acc.name }}{{ acc.bank_name ? ` · ${acc.bank_name}` : '' }} ({{ acc.currency_code }})
+          </option>
+        </optgroup>
+        <optgroup v-if="accountStore.personalAccounts.length" label="Особисті">
+          <option
+            v-for="acc in accountStore.personalAccounts"
+            :key="acc.id"
+            :value="acc.id"
+          >
+            {{ acc.name }}{{ acc.bank_name ? ` · ${acc.bank_name}` : '' }} ({{ acc.currency_code }})
+          </option>
+        </optgroup>
+      </select>
+      <p
+        v-if="form.type === 'income' && selectedAccount"
+        class="text-[10px] font-medium px-2"
+        :class="selectedAccount.is_business ? 'text-blue-500' : 'text-amber-500'"
+      >
+        {{
+          selectedAccount.is_business
+            ? 'Дохід на бізнес-рахунок — враховується для податків ФОП.'
+            : 'Особистий рахунок — не входить до доходу ФОП.'
+        }}
+      </p>
+    </div>
+
+    <!-- FOP vs Personal (fallback без рахунків) -->
+    <div v-else-if="form.type === 'income'" class="space-y-3 animate-fade-in">
       <label class="text-xs font-black text-gray-400 uppercase tracking-widest px-1 flex items-center gap-2">
         <CreditCard :size="14" /> Куди надійшли кошти?
       </label>
       <div class="flex p-1.5 bg-gray-100 rounded-2xl gap-2">
-        <button 
+        <button
           type="button"
           class="flex-1 py-3 px-4 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
           :class="form.is_fop ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400 hover:text-gray-600'"
@@ -150,7 +223,7 @@ const isZedRestricted = computed(() => {
           <CreditCard :size="14" />
           Карта ФОП
         </button>
-        <button 
+        <button
           type="button"
           class="flex-1 py-3 px-4 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
           :class="!form.is_fop ? 'bg-white shadow-sm text-amber-600' : 'text-gray-400 hover:text-gray-600'"
@@ -162,6 +235,11 @@ const isZedRestricted = computed(() => {
       </div>
       <p class="text-[10px] font-medium px-2" :class="form.is_fop ? 'text-blue-500' : 'text-amber-500'">
         {{ form.is_fop ? 'Цей дохід буде враховано при розрахунку податків.' : 'Особисті кошти не підлягають оподаткуванню ФОП.' }}
+      </p>
+      <p class="text-[10px] text-gray-400 px-2">
+        Додайте рахунки в
+        <router-link to="/settings" class="text-blue-600 font-bold hover:underline">налаштуваннях</router-link>,
+        щоб не перемикати вручну.
       </p>
     </div>
 

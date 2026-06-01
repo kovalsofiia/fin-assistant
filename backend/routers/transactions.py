@@ -6,6 +6,7 @@ from services.nbu_service import get_nbu_rate
 from models.transaction import TransactionCreate, TransactionPatch
 from models.common import FopGroup
 from models.setting import FopSettingsBase
+from services.account_service import AccountService
 from datetime import date as date_type
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
@@ -24,8 +25,15 @@ def _get_user_fop_settings(user_id: str) -> Optional[FopSettingsBase]:
     return FopSettingsBase(**settings_res.data[0])
 
 
-def _validate_fx_transaction_rules(user_id: str, currency: str):
+def _validate_fx_transaction_rules(
+    user_id: str,
+    currency: str,
+    *,
+    applies_to_fop_rules: bool = True,
+):
     if currency == "UAH":
+        return
+    if not applies_to_fop_rules:
         return
 
     settings = _get_user_fop_settings(user_id)
@@ -62,7 +70,17 @@ def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get
     """
     final_rate = 1.0
     amount_uah = tx.amount
-    _validate_fx_transaction_rules(current_user_id, tx.currency)
+
+    account = None
+    if tx.account_id:
+        account = AccountService.get_account(current_user_id, str(tx.account_id))
+
+    resolved_is_fop = AccountService.resolve_is_fop(account, tx.is_fop)
+    _validate_fx_transaction_rules(
+        current_user_id,
+        tx.currency,
+        applies_to_fop_rules=resolved_is_fop,
+    )
 
     # Валютна магія
     if tx.currency != "UAH":
@@ -89,7 +107,8 @@ def create_transaction(tx: TransactionCreate, current_user_id: str = Depends(get
         "currency_code": tx.currency,
         "amount_original": tx.amount if tx.currency != "UAH" else None,
         "exchange_rate": final_rate,
-        "is_fop": tx.is_fop
+        "is_fop": resolved_is_fop,
+        "account_id": str(tx.account_id) if tx.account_id else None,
     }
 
     try:
@@ -113,6 +132,7 @@ def get_transactions(
     end_date: Optional[date_type] = None,   # Фільтр: По яку дату
     type: Optional[str] = None,        # Фільтр: 'income' або 'expense'
     category_id: Optional[str] = None,  # Фільтр: за категорією
+    account_id: Optional[str] = None,
     search: Optional[str] = None,
 ):
     """
@@ -141,6 +161,9 @@ def get_transactions(
             
         if category_id:
             query = query.eq("category_id", category_id)
+
+        if account_id:
+            query = query.eq("account_id", account_id)
 
         if search:
             search_value = search.strip()
@@ -311,6 +334,21 @@ def patch_transaction(
         # manual_rate сюди потрапить тільки якщо він був у patch_fields
         provided_manual_rate = patch_fields.get('manual_rate')
 
+        patch_account = None
+        effective_account_id = old_data.get("account_id")
+        if "account_id" in patch_fields:
+            raw_account_id = patch_fields.get("account_id")
+            effective_account_id = str(raw_account_id) if raw_account_id else None
+        if effective_account_id:
+            patch_account = AccountService.get_account(current_user_id, effective_account_id)
+
+        explicit_is_fop = (
+            patch.is_fop
+            if patch.is_fop is not None
+            else (old_data.get("is_fop", True) if old_data.get("is_fop") is not None else True)
+        )
+        resolved_is_fop = AccountService.resolve_is_fop(patch_account, explicit_is_fop)
+
         # 3. Перевіряємо, чи треба перераховувати фінанси
         needs_recalc = any(f in patch_fields for f in ['amount', 'date', 'currency', 'manual_rate'])
 
@@ -319,7 +357,11 @@ def patch_transaction(
         final_amount_original = old_data['amount_original']
         
         if needs_recalc:
-            _validate_fx_transaction_rules(current_user_id, new_currency)
+            _validate_fx_transaction_rules(
+                current_user_id,
+                new_currency,
+                applies_to_fop_rules=resolved_is_fop,
+            )
             if new_currency != "UAH":
                 # 1. Якщо користувач передав курс і він > 0 — використовуємо його
                 if provided_manual_rate and provided_manual_rate > 0:
@@ -368,8 +410,10 @@ def patch_transaction(
             data_to_update["amount_original"] = final_amount_original
             data_to_update["exchange_rate"] = final_rate
 
-        if patch.is_fop is not None:
-            data_to_update["is_fop"] = patch.is_fop
+        if patch.is_fop is not None or patch_account is not None:
+            data_to_update["is_fop"] = resolved_is_fop
+        if "account_id" in patch_fields:
+            data_to_update["account_id"] = effective_account_id
 
         # 5. Зберігаємо в базу
         response = supabase.table("transactions")\

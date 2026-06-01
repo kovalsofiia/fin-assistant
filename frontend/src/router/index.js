@@ -6,7 +6,6 @@ import OnboardingView from '@/views/OnboardingView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import DashboardView from '@/views/DashboardView.vue';
 import AnalyticsView from '@/views/AnalyticsView.vue';
-import FopGroupQuizView from '@/views/FopGroupQuizView.vue';
 import AdminTaxRulesView from '@/views/AdminTaxRulesView.vue';
 import AdminQuizRulesView from '@/views/AdminQuizRulesView.vue';
 
@@ -44,9 +43,7 @@ const router = createRouter({
     },
     {
       path: '/quiz/fop-group',
-      name: 'fop-group-quiz',
-      component: FopGroupQuizView,
-      meta: { requiresAuth: true }
+      redirect: { path: '/analytics', query: { tab: 'fop_group' } }
     },
     {
       path: '/admin/tax-rules',

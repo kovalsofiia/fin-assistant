@@ -26,6 +26,7 @@ import TransactionFormModal from '@/components/transactions/TransactionFormModal
 import CategoryModal from '@/components/common/CategoryModal.vue';
 import TransactionModal from '@/components/dashboard/TransactionModal.vue';
 import ExportCsvPanel from '@/components/analytics/ExportCsvPanel.vue';
+import FopGroupRecommendPanel from '@/components/analytics/FopGroupRecommendPanel.vue';
 import { useBudgetStore } from '@/stores/budgetStore';
 import { supabase } from '@/services/supabase';
 import api from '@/services/api';
@@ -603,6 +604,7 @@ const exportYear = computed(() => {
 const analyticsTabs = [
   { id: 'overview', label: 'Огляд' },
   { id: 'transactions', label: 'Транзакції' },
+  { id: 'fop_group', label: 'Група ФОП' },
   { id: 'budgets', label: 'Бюджети' },
   { id: 'history', label: 'Історія податків' },
   { id: 'reports', label: 'Аналіз поведінки' },
@@ -938,6 +940,14 @@ const analyticsTabs = [
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- Група ФОП -->
+    <div v-if="activeTab === 'fop_group'" class="animate-fade-in">
+      <FopGroupRecommendPanel
+        :start-date="store.filters.startDate"
+        :end-date="store.filters.endDate"
+      />
     </div>
 
     <!-- Вкладка Звіти та поведінка -->

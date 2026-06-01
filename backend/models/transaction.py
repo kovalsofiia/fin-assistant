@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
+from uuid import UUID
 from datetime import date as date_type
 from models.common import CommonType
 from core.constants import(
@@ -24,6 +25,8 @@ class TransactionCreate(BaseModel):
     manual_rate: Optional[float] = Field(None, gt=MIN_MANUAL_RATE) 
     # 5. Чи є це доходом ФОП (для оподаткування)
     is_fop: bool = True
+    # 6. Рахунок / картка (якщо задано — is_fop синхронізується з is_business рахунку)
+    account_id: Optional[UUID] = None
 
 class TransactionPatch(BaseModel):
     category_id: Optional[str] = None
@@ -34,3 +37,4 @@ class TransactionPatch(BaseModel):
     currency: Optional[str] = Field(None, pattern=CURRENCY_REGEX)
     manual_rate: Optional[float] = Field(None, gt=MIN_MANUAL_RATE)
     is_fop: Optional[bool] = None
+    account_id: Optional[UUID] = None

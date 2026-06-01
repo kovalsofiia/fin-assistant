@@ -3,6 +3,7 @@ import api from '@/services/api';
 import { supabase } from '@/services/supabase';
 import { getMonthRange } from '@/utils/dateUtils';
 import { getCategoryName } from '@/utils/format';
+import { useAccountStore } from '@/stores/accountStore';
 
 export const useTransactionStore = defineStore('transactions', {
   state: () => {
@@ -118,10 +119,12 @@ export const useTransactionStore = defineStore('transactions', {
     },
 
     async fetchInitialData(filterOverride = null) {
+      const accountStore = useAccountStore();
       await Promise.all([
         this.fetchTransactions(filterOverride),
         this.fetchCategories(),
-        this.fetchLifetimeSummary(filterOverride?.endDate)
+        this.fetchLifetimeSummary(filterOverride?.endDate),
+        accountStore.fetchAccounts(),
       ]);
     },
 

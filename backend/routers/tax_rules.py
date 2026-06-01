@@ -7,6 +7,8 @@ from services.tax_service import TaxService
 from models.setting import FopSettingsBase
 from models.common import ReportingPeriod
 from models.tax_rule import TaxRuleUpdate, TaxRuleResponse
+from models.fop_recommendation import FopRecommendManualFlags
+from services.fop_recommendation_service import FopRecommendationService
 from core.database import supabase
 from core.auth import get_current_user_id
 from core.admin_auth import require_tax_rules_admin
@@ -97,6 +99,38 @@ def get_tax_rules(year: int, month: int):
     except Exception as e:
         print(f"Error in /tax/rules: {e}")
         raise HTTPException(status_code=500, detail="Не вдалося завантажити податкові правила")
+
+
+@router.get("/recommend")
+def recommend_fop_group(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    is_b2b_or_foreign: Optional[bool] = None,
+    g4_land_type: str = "arable_pasture",
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """
+    Рекомендація групи ФОП за транзакціями (is_fop) та профілем.
+    is_b2b_or_foreign: якщо задано — перевизначає авто-визначення (ЗЕД/валюта).
+    """
+    try:
+        sd = date_type.fromisoformat(start_date) if start_date else None
+        ed = date_type.fromisoformat(end_date) if end_date else None
+        manual = FopRecommendManualFlags(
+            is_b2b_or_foreign=is_b2b_or_foreign,
+            g4_land_type=g4_land_type,
+        ).dict()
+        return FopRecommendationService.recommend(
+            current_user_id,
+            start_date=sd,
+            end_date=ed,
+            manual=manual,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"FOP recommend error for {current_user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Не вдалося сформувати рекомендацію")
 
 
 @router.get("/rules/admin/list")

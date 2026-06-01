@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue';
 import { useTransactionStore } from '@/stores/transactionStore';
+import { useAccountStore } from '@/stores/accountStore';
 import BaseModal from '@/components/common/BaseModal.vue';
 import CategoryModal from '@/components/common/CategoryModal.vue';
 import TransactionForm from '@/components/common/TransactionForm.vue';
@@ -23,6 +24,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'updated', 'deleted']);
 
 const txStore = useTransactionStore();
+const accountStore = useAccountStore();
 const isEditing = ref(false);
 const isSubmitting = ref(false);
 
@@ -38,7 +40,8 @@ const initialFormState = {
   currency: 'UAH',
   manual_rate: '',
   isZed: false,
-  is_fop: true
+  is_fop: true,
+  account_id: '',
 };
 
 const form = reactive({ ...initialFormState });
@@ -59,7 +62,8 @@ watch(() => props.transaction, (newTx) => {
       currency: newTx.currency_code || 'UAH',
       manual_rate: newTx.exchange_rate === 1.0 ? '' : newTx.exchange_rate,
       isZed: newTx.is_foreign_currency,
-      is_fop: newTx.is_fop !== false
+      is_fop: newTx.is_fop !== false,
+      account_id: newTx.account_id || '',
     });
   } else {
     resetForm();
@@ -68,6 +72,9 @@ watch(() => props.transaction, (newTx) => {
 
 // Reset editing state when modal opens/closes
 watch(() => props.isOpen, (newVal) => {
+  if (newVal && !accountStore.accounts.length) {
+    accountStore.fetchAccounts();
+  }
   if (!newVal) {
     setTimeout(() => {
       isEditing.value = false;
@@ -107,7 +114,8 @@ const submitUpdate = async () => {
       description: form.description,
       currency: form.isZed ? form.currency : 'UAH',
       manual_rate: (form.isZed && form.manual_rate) ? parseFloat(form.manual_rate) : null,
-      is_fop: form.type === 'income' ? form.is_fop : true
+      is_fop: form.is_fop !== false,
+      account_id: form.account_id || null,
     };
 
     await txStore.editTransaction(props.transaction.transaction_id, props.userId, payload);
@@ -186,14 +194,19 @@ const formatCurrency = (val) => {
           <span class="font-bold text-gray-800">{{ new Date(transaction.transaction_date).toLocaleDateString('uk-UA') }}</span>
         </div>
 
-        <!-- Account Type for Income -->
-        <div v-if="transaction.transaction_type === 'income'" class="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl">
+        <div
+          v-if="transaction.account_id || transaction.transaction_type === 'income'"
+          class="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl"
+        >
           <div class="flex items-center gap-3 text-gray-500">
             <component :is="transaction.is_fop !== false ? CreditCard : User" :size="18" />
-            <span class="text-xs font-black uppercase tracking-widest">Тип рахунку</span>
+            <span class="text-xs font-black uppercase tracking-widest">Рахунок</span>
           </div>
-          <span class="font-bold" :class="transaction.is_fop !== false ? 'text-blue-600' : 'text-amber-600'">
-            {{ transaction.is_fop !== false ? 'ФОП Карта' : 'Особистий' }}
+          <span class="font-bold text-right" :class="transaction.is_fop !== false ? 'text-blue-600' : 'text-amber-600'">
+            {{
+              accountStore.accountById(transaction.account_id)?.name
+                || (transaction.is_fop !== false ? 'ФОП (без прив’язки)' : 'Особистий')
+            }}
           </span>
         </div>
 
