@@ -1,6 +1,7 @@
 <script setup>
 import { nextTick, ref } from 'vue';
-import { MessageCircle, X, Send, RotateCcw } from 'lucide-vue-next';
+import { MessageCircle, X, Send, RotateCcw, Loader2 } from 'lucide-vue-next';
+import ChatMarkdown from './ChatMarkdown.vue';
 import api from '@/services/api';
 
 // Мають збігатися з backend/routers/chat.py
@@ -147,20 +148,36 @@ async function send() {
         </div>
       </header>
 
-      <div ref="listEl" class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        <p class="rounded-2xl bg-gray-100 px-3 py-2 text-sm text-gray-800">{{ GREETING }}</p>
-        <p
-          v-for="(message, index) in messages"
-          :key="index"
-          class="max-w-[85%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm"
-          :class="message.role === 'user' ? 'ml-auto bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'"
-        >{{ message.content }}</p>
-        <p v-if="isLoading" class="text-sm italic text-gray-500">Друкує…</p>
+      <div ref="listEl" class="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-3">
+        <div class="max-w-[92%] rounded-2xl bg-white px-3 py-2 shadow-sm ring-1 ring-gray-100">
+          <ChatMarkdown :content="GREETING" />
+        </div>
+        <template v-for="(message, index) in messages" :key="index">
+          <p
+            v-if="message.role === 'user'"
+            class="ml-auto max-w-[85%] whitespace-pre-line rounded-2xl bg-blue-600 px-3 py-2 text-sm text-white"
+          >{{ message.content }}</p>
+          <div
+            v-else
+            class="max-w-[92%] rounded-2xl bg-white px-3 py-2 text-gray-800 shadow-sm ring-1 ring-gray-100"
+          >
+            <ChatMarkdown :content="message.content" />
+          </div>
+        </template>
+        <div
+          v-if="isLoading"
+          class="flex max-w-[92%] items-center gap-2 rounded-2xl bg-white px-3 py-2 text-sm text-gray-500 shadow-sm ring-1 ring-gray-100"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 class="h-4 w-4 shrink-0 animate-spin text-blue-600" aria-hidden="true" />
+          <span>Думаю…</span>
+        </div>
       </div>
 
-      <p v-if="error" class="px-4 pb-2 text-sm text-red-600">{{ error }}</p>
+      <p v-if="error" class="bg-white px-4 pb-2 text-sm text-red-600">{{ error }}</p>
 
-      <form class="flex items-end gap-2 border-t border-gray-100 p-3" @submit.prevent="send">
+      <form class="flex items-end gap-2 border-t border-gray-200 bg-white p-3" @submit.prevent="send">
         <textarea
           v-model="draft"
           rows="1"
