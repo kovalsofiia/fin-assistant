@@ -15,8 +15,11 @@ from models.common import ReportingPeriod
 from routers import analytics as analytics_router
 from routers import budgets as budgets_router
 from routers import categories as categories_router
+from routers import profiles as profiles_router
+from routers import settings as settings_router
 from routers import tax_rules as tax_rules_router
 from routers import transactions as transactions_router
+from services import nbu_service
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +145,58 @@ def _budgets_progress(user_id: str) -> Any:
     return budgets_router.get_budgets_progress(current_user_id=user_id)
 
 
+# --- Обробники extension tools ---
+
+REPORT_PERIODS = ("daily", "weekly", "monthly", "yearly")
+
+
+def _or_none(handler: Callable[..., Any], **kwargs) -> Any:
+    # Відсутній профіль чи налаштування — не помилка всього інструменту.
+    try:
+        return handler(**kwargs)
+    except HTTPException:
+        return None
+
+
+def _tax_history(user_id: str) -> Any:
+    return analytics_router.get_tax_history(current_user_id=user_id)
+
+
+def _exchange_rate(user_id: str, currency: str, rate_date: Optional[str] = None) -> Any:
+    code = str(currency).upper()
+    if len(code) != 3 or not code.isalpha() or not code.isascii():
+        raise ToolArgumentError("currency має бути ISO-кодом валюти, напр. USD або EUR")
+    on_date = _parse_date(rate_date, "rate_date") or date.today()
+    rate = nbu_service.get_nbu_rate(code, on_date)
+    if not rate:
+        return {"error": f"Курс {code} на {on_date.isoformat()} не знайдено"}
+    return {"currency": code, "date": on_date.isoformat(), "rate_uah": rate}
+
+
+def _financial_report(user_id: str, period: str = "monthly") -> Any:
+    if period not in REPORT_PERIODS:
+        raise ToolArgumentError(f"period має бути одним із: {', '.join(REPORT_PERIODS)}")
+    report = dict(analytics_router.get_reports(period=period, start_date=None, end_date=None, current_user_id=user_id))
+    report["categories_spent"] = _named_categories(report.get("categories_spent", {}), _category_names(user_id))
+    return report
+
+
+def _profile(user_id: str) -> Any:
+    return {
+        "profile": _or_none(profiles_router.get_profile, user_id=user_id, current_user_id=user_id),
+        "fop_settings": _or_none(settings_router.get_fop_settings, user_id=user_id, current_user_id=user_id),
+    }
+
+
+def _categories(user_id: str) -> Any:
+    categories = categories_router.get_categories(current_user_id=user_id)
+    return {
+        "categories": [
+            {"id": c["id"], "name": c["name"], "type": c.get("type")} for c in categories.get("all", [])
+        ]
+    }
+
+
 # --- Реєстр ---
 
 _DATE = {"type": "string", "description": "Дата у форматі YYYY-MM-DD"}
@@ -219,7 +274,54 @@ CORE_TOOLS = [
     ),
 ]
 
-TOOLS = {tool.name: tool for tool in CORE_TOOLS}
+EXTENSION_TOOLS = [
+    Tool(
+        name="get_tax_history",
+        description="Історія податкових записів по місяцях: дохід ФОП, ЄСВ, єдиний податок, військовий збір, чи сплачено.",
+        parameters={"type": "object", "properties": {}},
+        handler=_tax_history,
+    ),
+    Tool(
+        name="get_exchange_rate",
+        description="Офіційний курс НБУ валюти до гривні на дату (типово — сьогодні).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "currency": {"type": "string", "description": "ISO-код валюти, напр. USD, EUR"},
+                "rate_date": _DATE,
+            },
+            "required": ["currency"],
+        },
+        handler=_exchange_rate,
+    ),
+    Tool(
+        name="get_financial_report",
+        description=(
+            "Звіт за поточний день/тиждень/місяць/рік: доходи, витрати, дохід ФОП, витрати за категоріями, "
+            "прогноз витрат до кінця місяця і поради."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"period": {"type": "string", "enum": list(REPORT_PERIODS)}},
+            "required": ["period"],
+        },
+        handler=_financial_report,
+    ),
+    Tool(
+        name="get_profile",
+        description="Профіль користувача та повні налаштування ФОП (група, система оподаткування, ставки, ЗЕД, ПДВ тощо).",
+        parameters={"type": "object", "properties": {}},
+        handler=_profile,
+    ),
+    Tool(
+        name="list_categories",
+        description="Категорії доходів і витрат користувача з їх ID (для фільтра category_id у list_transactions).",
+        parameters={"type": "object", "properties": {}},
+        handler=_categories,
+    ),
+]
+
+TOOLS = {tool.name: tool for tool in CORE_TOOLS + EXTENSION_TOOLS}
 
 
 def tool_schemas() -> list:
