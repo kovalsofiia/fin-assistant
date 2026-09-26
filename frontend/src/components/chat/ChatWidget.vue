@@ -7,6 +7,7 @@ import api from '@/services/api';
 const MAX_HISTORY = 20;
 const MAX_MESSAGE_CHARS = 2000;
 const GREETING = 'Вітаю! Я фінансовий асистент. Запитайте про ваші доходи, витрати, бюджети чи податки.';
+const MODEL_STORAGE_KEY = 'chatModel';
 
 const isOpen = ref(false);
 const messages = ref([]);
@@ -14,6 +15,42 @@ const draft = ref('');
 const isLoading = ref(false);
 const error = ref('');
 const listEl = ref(null);
+const models = ref([]);
+const selectedModel = ref('');
+let modelsLoaded = false;
+
+function readStoredModel() {
+    try {
+        return localStorage.getItem(MODEL_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function rememberModel() {
+    try {
+        localStorage.setItem(MODEL_STORAGE_KEY, selectedModel.value);
+    } catch {
+        // localStorage недоступний (приватний режим) — вибір просто не збережеться
+    }
+}
+
+async function loadModels() {
+    if (modelsLoaded) return;
+    try {
+        const { data } = await api.getChatModels();
+        models.value = data.models;
+        const stored = readStoredModel();
+        selectedModel.value = data.models.includes(stored) ? stored : data.default || '';
+        modelsLoaded = true;
+    } catch {
+        // Без списку моделей чат працює на моделі за замовчуванням
+    }
+}
+
+function modelLabel(model) {
+    return model.split('/').pop();
+}
 
 async function scrollToBottom() {
     await nextTick();
@@ -22,7 +59,10 @@ async function scrollToBottom() {
 
 function toggle() {
     isOpen.value = !isOpen.value;
-    if (isOpen.value) scrollToBottom();
+    if (isOpen.value) {
+        loadModels();
+        scrollToBottom();
+    }
 }
 
 function reset() {
@@ -41,7 +81,7 @@ async function send() {
     scrollToBottom();
 
     try {
-        const { data } = await api.sendChatMessage(messages.value.slice(-MAX_HISTORY));
+        const { data } = await api.sendChatMessage(messages.value.slice(-MAX_HISTORY), selectedModel.value);
         messages.value.push({ role: 'assistant', content: data.reply });
     } catch (e) {
         // Повертаємо текст у поле, щоб користувач міг повторити без дублювання в історії
@@ -74,7 +114,19 @@ async function send() {
       aria-label="Фінансовий асистент"
     >
       <header class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <h2 class="font-semibold text-gray-900">Фінансовий асистент</h2>
+        <div class="flex min-w-0 items-center gap-2">
+          <h2 class="font-semibold text-gray-900">Асистент</h2>
+          <select
+            v-if="models.length > 1"
+            v-model="selectedModel"
+            class="min-w-0 max-w-[10rem] truncate rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+            aria-label="Модель"
+            :title="selectedModel"
+            @change="rememberModel"
+          >
+            <option v-for="model in models" :key="model" :value="model">{{ modelLabel(model) }}</option>
+          </select>
+        </div>
         <div class="flex items-center gap-1">
           <button type="button" class="rounded p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Почати нову розмову" @click="reset">
             <RotateCcw class="h-4 w-4" />

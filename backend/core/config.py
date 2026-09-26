@@ -12,6 +12,8 @@ class Settings:
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "")
+    # Білий список моделей, з яких користувач може обрати в чаті (через кому)
+    LLM_MODELS: list = [m.strip() for m in os.getenv("LLM_MODELS", "").split(",") if m.strip()]
 
     # Default CORS origins
     DEFAULT_CORS = [

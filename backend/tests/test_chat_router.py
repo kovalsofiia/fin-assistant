@@ -31,7 +31,7 @@ def test_chat_returns_reply(client):
     response = client.post("/chat/", json={"messages": [user_message()]})
 
     assert response.status_code == 200
-    assert response.json() == {"reply": "Вітаю!", "tools_used": []}
+    assert response.json() == {"reply": "Вітаю!", "tools_used": [], "model": "test-model"}
     assert llm.calls[0]["messages"][-1] == user_message()
 
 

@@ -1,7 +1,10 @@
 import api from './axios';
 
 export default {
-    sendChatMessage(messages) {
-        return api.post('/chat/', { messages });
+    getChatModels() {
+        return api.get('/chat/models');
+    },
+    sendChatMessage(messages, model) {
+        return api.post('/chat/', { messages, model: model || null });
     },
 };

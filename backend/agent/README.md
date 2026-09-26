@@ -26,6 +26,7 @@ Vue ChatWidget ──POST /chat/──▶ routers/chat.py ──▶ agent/runner
 | `LLM_API_KEY` | Ключ OpenRouter (або будь-який рядок для Ollama) |
 | `LLM_BASE_URL` | Типово `https://openrouter.ai/api/v1` |
 | `LLM_MODEL` | Ідентифікатор моделі з tool calling, напр. з openrouter.ai/models |
+| `LLM_MODELS` | Необов'язково: моделі для вибору в чаті, через кому. `LLM_MODEL` іде першою як модель за замовчуванням. Моделі поза списком ендпоінт відхиляє (`422`) — це захищає бюджет |
 
 Без `LLM_API_KEY` / `LLM_MODEL` ендпоінт повертає `503`.
 
