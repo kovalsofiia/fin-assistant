@@ -7,7 +7,12 @@ class Settings:
     PROJECT_NAME: str = "FOP Assistant API 🇺🇦"
     SUPABASE_URL: str = os.getenv("SUPABASE_URL")
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY")
-    
+
+    # LLM: OpenRouter або будь-який OpenAI-сумісний API (напр. Ollama: http://localhost:11434/v1)
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "")
+
     # Default CORS origins
     DEFAULT_CORS = [
         "http://localhost:5173",
