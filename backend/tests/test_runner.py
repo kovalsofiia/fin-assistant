@@ -72,6 +72,21 @@ def test_multiple_tool_calls_in_one_turn(monkeypatch):
     assert [m["tool_call_id"] for m in llm.calls[1]["messages"] if m["role"] == "tool"] == ["a", "b"]
 
 
+def test_caps_tool_calls_per_turn(monkeypatch):
+    executed = []
+    monkeypatch.setattr(runner, "execute_tool", lambda name, arguments, user_id: executed.append(name) or "{}")
+    calls = [ToolCall(id=str(i), name="get_insights", arguments={}) for i in range(10)]
+    llm = ScriptedLLM([AssistantTurn(content=None, tool_calls=calls), AssistantTurn(content="Готово")])
+
+    result = run(llm)
+
+    assert len(executed) == runner.MAX_TOOL_CALLS_PER_TURN
+    assert len(result.tools_used) == runner.MAX_TOOL_CALLS_PER_TURN
+    tool_messages = [m for m in llm.calls[1]["messages"] if m["role"] == "tool"]
+    assert len(tool_messages) == 10
+    assert [m["tool_call_id"] for m in tool_messages] == [str(i) for i in range(10)]
+
+
 def test_stops_after_max_iterations(monkeypatch):
     monkeypatch.setattr(runner, "execute_tool", lambda name, arguments, user_id: "{}")
     looping = AssistantTurn(content=None, tool_calls=[ToolCall(id="x", name="get_insights", arguments={})])

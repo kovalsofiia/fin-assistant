@@ -1,4 +1,5 @@
 """Цикл агента: LLM → виклики tools → LLM … до текстової відповіді або ліміту ітерацій."""
+import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
@@ -7,6 +8,8 @@ from agent.prompts import build_system_prompt, load_profile_context
 from agent.tools import execute_tool, tool_schemas
 
 MAX_ITERATIONS = 5
+MAX_TOOL_CALLS_PER_TURN = 8
+TOO_MANY_TOOL_CALLS_REPLY = {"error": "Забагато викликів інструментів за раз"}
 FALLBACK_REPLY = "Не вдалося сформувати відповідь. Спробуйте переформулювати запитання."
 ITERATION_LIMIT_REPLY = (
     "Запит виявився занадто складним для однієї відповіді. Спробуйте розбити його на простіші запитання."
@@ -40,7 +43,16 @@ def run_agent(
             return AgentResult(reply=(turn.content or "").strip() or FALLBACK_REPLY, tools_used=tools_used)
 
         messages.append(turn.to_message())
-        for call in turn.tool_calls:
+        for index, call in enumerate(turn.tool_calls):
+            if index >= MAX_TOOL_CALLS_PER_TURN:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": json.dumps(TOO_MANY_TOOL_CALLS_REPLY, ensure_ascii=False),
+                    }
+                )
+                continue
             tools_used.append(call.name)
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": execute_tool(call.name, call.arguments, user_id)}

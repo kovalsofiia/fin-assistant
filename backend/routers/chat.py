@@ -2,7 +2,7 @@ import logging
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from agent.llm_client import LLMClient
 from agent.runner import run_agent
@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 20
 MAX_MESSAGE_CHARS = 2000
+# Відповіді асистента не обмежені на боці LLM: без окремого (більшого) ліміту довга
+# відповідь у попередній історії робила б наступний запит невалідним (422) назавжди.
+MAX_ASSISTANT_CHARS = 8000
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -20,7 +23,13 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class ChatMessage(BaseModel):
     # role "system"/"tool" заборонені: клієнт не може підмінити системний промпт.
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    content: str = Field(min_length=1, max_length=MAX_ASSISTANT_CHARS)
+
+    @model_validator(mode="after")
+    def _check_user_length(self) -> "ChatMessage":
+        if self.role == "user" and len(self.content) > MAX_MESSAGE_CHARS:
+            raise ValueError(f"Повідомлення користувача не може перевищувати {MAX_MESSAGE_CHARS} символів")
+        return self
 
 
 class ChatRequest(BaseModel):

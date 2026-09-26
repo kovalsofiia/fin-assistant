@@ -164,6 +164,24 @@ def test_http_exception_becomes_error(monkeypatch):
     assert run("get_tax_estimate", {"period": "month"}) == {"error": "Налаштування ФОП не знайдено"}
 
 
+def test_http_exception_5xx_hides_detail(monkeypatch):
+    def fake(**kwargs):
+        raise HTTPException(status_code=500, detail="secret dsn")
+
+    monkeypatch.setattr(tools.tax_rules_router, "calculate_tax", fake)
+
+    assert run("get_tax_estimate", {"period": "month"}) == {"error": "Внутрішня помилка інструменту"}
+
+
+def test_type_error_inside_handler_is_hidden(monkeypatch):
+    def fake(current_user_id):
+        raise TypeError("boom")
+
+    monkeypatch.setattr(tools.budgets_router, "get_budgets_progress", fake)
+
+    assert run("get_budgets_progress", {}) == {"error": "Внутрішня помилка інструменту"}
+
+
 def test_unexpected_exception_is_hidden(monkeypatch):
     def fake(current_user_id):
         raise RuntimeError("secret connection string")

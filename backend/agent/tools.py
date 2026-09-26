@@ -3,6 +3,7 @@
 Лише читання даних поточного користувача: кожен tool — тонка обгортка над наявним
 хендлером роутера, який сам фільтрує дані за current_user_id.
 """
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -360,14 +361,22 @@ def execute_tool(name: str, arguments: dict, user_id: str) -> str:
     if tool is None:
         return _dump({"error": f"Невідомий інструмент: {name}"})
     try:
+        # Перевірка аргументів до виклику: TypeError від bind — некоректні аргументи моделі,
+        # TypeError всередині handler — внутрішня помилка (не плутати ці два випадки).
         # user_id передається позиційно: спроба моделі передати свій user_id дасть TypeError.
+        inspect.signature(tool.handler).bind(user_id, **arguments)
+    except TypeError as exc:
+        return _dump({"error": f"Некоректні аргументи для {name}: {exc}"})
+    try:
         result = tool.handler(user_id, **arguments)
     except HTTPException as exc:
-        result = {"error": exc.detail}
+        if exc.status_code >= 500:
+            logger.error("Tool %s failed with HTTP %s", name, exc.status_code)
+            result = {"error": "Внутрішня помилка інструменту"}
+        else:
+            result = {"error": exc.detail}
     except ToolArgumentError as exc:
         result = {"error": str(exc)}
-    except TypeError as exc:
-        result = {"error": f"Некоректні аргументи для {name}: {exc}"}
     except Exception:
         logger.exception("Tool %s failed", name)
         result = {"error": "Внутрішня помилка інструменту"}

@@ -53,13 +53,21 @@ class LLMClient:
         model: str,
         temperature: float = 0.2,
         sdk_client: Any = None,
+        max_tokens: int = 1024,
     ):
         self.model = model
         self.temperature = temperature
-        self._client = sdk_client or OpenAI(api_key=api_key, base_url=base_url)
+        self.max_tokens = max_tokens
+        # timeout/max_retries: дефолт SDK (600с, 2 повтори) неприйнятний для веб-запиту користувача.
+        self._client = sdk_client or OpenAI(api_key=api_key, base_url=base_url, timeout=30, max_retries=1)
 
     def complete(self, messages: list, tools: list) -> AssistantTurn:
-        kwargs = {"model": self.model, "messages": messages, "temperature": self.temperature}
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
         if tools:
             kwargs["tools"] = tools
         response = self._client.chat.completions.create(**kwargs)

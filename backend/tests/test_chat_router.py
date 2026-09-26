@@ -65,6 +65,28 @@ def test_rejects_too_long_message(client):
     assert client.post("/chat/", json={"messages": [user_message(long_text)]}).status_code == 422
 
 
+def test_long_assistant_reply_in_history_still_allowed(client):
+    llm = use_llm(ScriptedLLM([AssistantTurn(content="Ок")]))
+    long_reply = "а" * 8000
+    messages = [user_message("Привіт"), {"role": "assistant", "content": long_reply}, user_message("Далі")]
+
+    response = client.post("/chat/", json={"messages": messages})
+
+    assert response.status_code == 200
+    assert llm.calls[0]["messages"][-2]["content"] == long_reply
+
+
+def test_rejects_too_long_assistant_message(client):
+    use_llm(ScriptedLLM([]))
+    messages = [
+        user_message("Привіт"),
+        {"role": "assistant", "content": "а" * (chat_router.MAX_ASSISTANT_CHARS + 1)},
+        user_message("Далі"),
+    ]
+
+    assert client.post("/chat/", json={"messages": messages}).status_code == 422
+
+
 def test_rejects_system_role(client):
     use_llm(ScriptedLLM([]))
 
