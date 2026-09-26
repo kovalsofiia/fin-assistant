@@ -5,6 +5,7 @@ import profiles from './profiles';
 import budgets from './budgets';
 import analytics from './analytics';
 import taxRulesAdmin from './taxRulesAdmin';
+import chat from './chat';
 
 export default {
     ...transactions,
@@ -13,6 +14,7 @@ export default {
     ...budgets,
     ...analytics,
     ...taxRulesAdmin,
+    ...chat,
     // Direct axios methods for flexibility
     get: (url, config) => api.get(url, config),
     post: (url, data, config) => api.post(url, data, config),
