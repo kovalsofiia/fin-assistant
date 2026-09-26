@@ -6,6 +6,7 @@ import api from '@/services/api';
 // Мають збігатися з backend/routers/chat.py
 const MAX_HISTORY = 20;
 const MAX_MESSAGE_CHARS = 2000;
+const MAX_ASSISTANT_CHARS = 8000; // має збігатися з backend/routers/chat.py
 const GREETING = 'Вітаю! Я фінансовий асистент. Запитайте про ваші доходи, витрати, бюджети чи податки.';
 const MODEL_STORAGE_KEY = 'chatModel';
 
@@ -81,7 +82,10 @@ async function send() {
     scrollToBottom();
 
     try {
-        const { data } = await api.sendChatMessage(messages.value.slice(-MAX_HISTORY), selectedModel.value);
+        const payload = messages.value
+        .slice(-MAX_HISTORY)
+        .map((m) => (m.role === 'assistant' ? { ...m, content: m.content.slice(0, MAX_ASSISTANT_CHARS) } : m));
+    const { data } = await api.sendChatMessage(payload, selectedModel.value);
         messages.value.push({ role: 'assistant', content: data.reply });
     } catch (e) {
         // Повертаємо текст у поле, щоб користувач міг повторити без дублювання в історії
@@ -128,7 +132,13 @@ async function send() {
           </select>
         </div>
         <div class="flex items-center gap-1">
-          <button type="button" class="rounded p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Почати нову розмову" @click="reset">
+          <button
+            type="button"
+            :disabled="isLoading"
+            class="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+            aria-label="Почати нову розмову"
+            @click="reset"
+          >
             <RotateCcw class="h-4 w-4" />
           </button>
           <button type="button" class="rounded p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Закрити" @click="toggle">

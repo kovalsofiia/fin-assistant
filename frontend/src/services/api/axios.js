@@ -31,8 +31,11 @@ instance.interceptors.response.use(
 
         const status = error.response ? error.response.status : null;
         const detail = error.response?.data?.detail;
+        const isChatRequest = typeof error.config?.url === 'string' && error.config.url.startsWith('/chat');
 
-        if (status === 401) {
+        if (isChatRequest) {
+            // Помилки чату показує сам ChatWidget — глобальний тост тут зайвий (і дублює UI).
+        } else if (status === 401) {
             notificationStore.showError("Сесія завершена. Будь ласка, увійдіть знову.");
         } else if (status === 403) {
             notificationStore.showError("Доступ заборонено.");
