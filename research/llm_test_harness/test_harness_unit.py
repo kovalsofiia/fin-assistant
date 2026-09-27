@@ -6,9 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pytest
 
+import config
 from extract import NoCodeFoundError, extract_python_code
 from mutants import MUTANTS, apply_mutant
-from run_pilot import _avg, evaluate_test_file, summarize
+from run_pilot import _avg, evaluate_test_file, select_models, summarize
 from sandbox import _parse_pytest_summary
 
 
@@ -112,6 +113,21 @@ def test_avg_ignores_none_and_handles_all_none():
     assert _avg([1.0, None, 3.0], 2) == 2.0
     assert _avg([None, None], 2) is None
     assert _avg([], 2) is None
+
+
+def test_select_models_empty_argv_returns_all():
+    assert select_models([]) == config.PILOT_MODELS
+
+
+def test_select_models_filters_by_label_substring_case_insensitive():
+    selected = select_models(["grok", "SONNET"])
+    assert {m.label for m in selected} == {"Grok 4.6", "Claude Sonnet 5"}
+
+
+def test_select_models_warns_on_unmatched_but_returns_matched(capsys):
+    selected = select_models(["grok", "no-such-model"])
+    assert [m.label for m in selected] == ["Grok 4.6"]
+    assert "no-such-model" in capsys.readouterr().out
 
 
 def test_summarize_handles_mixed_statuses_without_crashing():

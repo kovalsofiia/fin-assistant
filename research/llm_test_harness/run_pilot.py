@@ -5,7 +5,12 @@
 Результат — по одному рядку JSON у results/runs.jsonl і зведення в results/summary.csv.
 
 Використання (з кореня репозиторію):
-    backend/.venv/bin/python research/llm_test_harness/run_pilot.py
+    backend/.venv/bin/python research/llm_test_harness/run_pilot.py                # усі моделі з config.PILOT_MODELS
+    backend/.venv/bin/python research/llm_test_harness/run_pilot.py grok sonnet    # лише моделі, чия label містить ці підрядки
+
+Результати дописуються в results/runs.jsonl (не перезаписують попередні запуски —
+можна докидати нові моделі окремими викликами), а results/summary.csv щоразу
+перезбирається з УСІХ накопичених записів.
 
 Ключ моделі береться з backend/.env (LLM_API_KEY, LLM_BASE_URL) — цей скрипт лише
 завантажує його в змінні середовища процесу і ніколи не друкує.
@@ -55,16 +60,16 @@ def _do_call(client: OpenAI, model: config.ModelSpec, prompt: str):
     )
 
 
-# Спостерігали (2026-09-27): один запит до DeepSeek через OpenRouter завис на 10+ хвилин без
-# жодного винятку — ані per-request `timeout=` у openai SDK, ані навіть тайм-аут на рівні
-# ThreadPoolExecutor.result() (перевірено окремо: сам механізм future.result(timeout=...)
-# спрацьовує коректно за 2с на звичайному Python-коді) його не перервали. Причина — TCP/DNS
-# зависання нижче httpx: без явного httpx.Timeout SDK покладається на дефолтні (по суті
-# необмежені для connect) тайм-аути. Тому нижче явний httpx-клієнт з тайм-аутом на кожній
-# фазі з'єднання (connect/read/write/pool) — це enforced на рівні сокета (socket.settimeout),
-# а не потоку Python, і реально гарантує розрив зависання. ThreadPoolExecutor лишаємо як
-# другий рубіж захисту (belt-and-suspenders): якщо виклик усе ж зависне, пілот піде далі,
-# нехай і з «протеклим» потоком.
+# Спостерігали (2026-09-27): запуск цього скрипта як ФОНОВОГО/відв'язаного процесу
+# (nohup ... & або backgrounded shell job) робив виклики до OpenRouter аномально повільними
+# (за одним запитом минуло 10+ хвилин без відповіді) — але той самий запит з тим самим кодом
+# у ПЕРЕДНЬОМУ плані виконувався за 30-50с, і це підтвердилося для кількох різних моделей
+# (DeepSeek, Claude Sonnet 5), тобто причина не в конкретному провайдері, а в тому, як це
+# середовище розробки обробляє мережу для фонових процесів. Явний httpx-клієнт із тайм-аутом
+# на кожній фазі з'єднання (connect/read/write/pool, enforced на рівні сокета) і
+# ThreadPoolExecutor як другий рубіж захисту лишаються в коді як загальне посилення
+# надійності — вони не є вичерпним рішенням для фонового запуску: практичний висновок
+# (docs/practice/03-pilot-results.md) — цей скрипт варто запускати в передньому плані.
 _HTTP_CLIENT = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=config.REQUEST_TIMEOUT_S, write=10.0, pool=10.0))
 _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llm-call")
 
@@ -213,9 +218,32 @@ def summarize(records: list) -> list:
     return rows
 
 
+def select_models(argv: list) -> list:
+    """Усі PILOT_MODELS, або лише ті, чия label містить один із аргументів (без урахування регістру)."""
+    if not argv:
+        return config.PILOT_MODELS
+    needles = [a.lower() for a in argv]
+    selected = [m for m in config.PILOT_MODELS if any(n in m.label.lower() for n in needles)]
+    unmatched = [n for n in needles if not any(n in m.label.lower() for m in config.PILOT_MODELS)]
+    if unmatched:
+        print(f"Попередження: жодна модель не відповідає підрядку(ам): {', '.join(unmatched)}")
+    return selected
+
+
+def _load_existing_records(runs_path: Path) -> list:
+    if not runs_path.exists():
+        return []
+    return [json.loads(line) for line in runs_path.read_text().splitlines() if line.strip()]
+
+
 def main():
     if not LLM_API_KEY:
         print("LLM_API_KEY не знайдено в backend/.env — зупинка.")
+        sys.exit(1)
+
+    models = select_models(sys.argv[1:])
+    if not models:
+        print("Жодної моделі для запуску (перевірте аргументи).")
         sys.exit(1)
 
     original_source = sandbox.read_original_source()
@@ -230,30 +258,33 @@ def main():
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     runs_path = RESULTS_DIR / "runs.jsonl"
-    records = []
-    # Пишемо кожен запис одразу після прогону: якщо один провайдер зависне чи впаде,
-    # уже зібрані результати попередніх моделей/повторів не втрачаються.
-    with runs_path.open("w", encoding="utf-8") as f:
-        for model in config.PILOT_MODELS:
+    new_records = []
+    # Дописуємо (append), а не перезаписуємо: результати попередніх запусків з інших моделей
+    # не губляться. Кожен запис пишеться одразу після прогону — якщо один провайдер зависне
+    # чи впаде, уже зібрані результати цього ж виклику скрипта теж не втрачаються.
+    with runs_path.open("a", encoding="utf-8") as f:
+        for model in models:
             for repeat in range(1, config.REPEATS_PER_MODEL + 1):
                 print(f"-> {model.label} (повтор {repeat}/{config.REPEATS_PER_MODEL})...", flush=True)
                 record = run_one(client, model, repeat, original_source, prompt)
                 print(f"   {record['status']}"
                       + (f" pass_rate={record.get('pass_rate')} mutation_score={record.get('mutation_score')}"
                          if record["status"] == "evaluated" else f" error={record.get('error')}"))
-                records.append(record)
+                new_records.append(record)
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 f.flush()
 
-    summary_rows = summarize(records)
+    all_records = _load_existing_records(runs_path)
+    summary_rows = summarize(all_records)
     with (RESULTS_DIR / "summary.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary_rows[0].keys()) if summary_rows else [])
         writer.writeheader()
         writer.writerows(summary_rows)
 
-    total_cost = sum(r.get("cost_usd", 0) for r in records)
-    print(f"\nГотово. {len(records)} запусків, сумарна вартість ≈ ${total_cost:.4f}")
-    print(f"Деталі: {RESULTS_DIR / 'runs.jsonl'}\nЗведення: {RESULTS_DIR / 'summary.csv'}")
+    total_cost = sum(r.get("cost_usd", 0) for r in new_records)
+    print(f"\nГотово. {len(new_records)} нових запусків, вартість цього виклику ≈ ${total_cost:.4f}")
+    print(f"Усього в runs.jsonl: {len(all_records)} записів.")
+    print(f"Деталі: {runs_path}\nЗведення: {RESULTS_DIR / 'summary.csv'}")
 
 
 if __name__ == "__main__":

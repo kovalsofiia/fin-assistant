@@ -17,7 +17,13 @@ class ModelSpec:
 PILOT_MODELS = [
     ModelSpec("google/gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", 0.30, 2.50),
     ModelSpec("openai/gpt-5.6-luna", "GPT-5.6 Luna", 0.20, 1.20),
+    # DeepSeek V4 Flash лишається в списку кандидатів, але зависла на мережевому рівні
+    # під час пілоту навіть після виправлення httpx.Timeout — див. 03-pilot-results.md.
     ModelSpec("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", 0.05, 0.09),
+    # Дорожчі «флагманські» моделі — додано 2026-09-27 для порівняння якості проти вартості.
+    ModelSpec("anthropic/claude-sonnet-5", "Claude Sonnet 5", 2.00, 10.00),
+    ModelSpec("openai/gpt-5.6-terra", "GPT-5.6 Terra", 2.00, 12.00),
+    ModelSpec("x-ai/grok-4.6", "Grok 4.6", 2.00, 6.00),
 ]
 
 REPEATS_PER_MODEL = 2
