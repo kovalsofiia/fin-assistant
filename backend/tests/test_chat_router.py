@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent.llm_client import AssistantTurn
+from agent.runner import AgentResult
 from core.auth import get_current_user_id
 from main import app
 from routers import chat as chat_router
@@ -31,7 +32,7 @@ def test_chat_returns_reply(client):
     response = client.post("/chat/", json={"messages": [user_message()]})
 
     assert response.status_code == 200
-    assert response.json() == {"reply": "Вітаю!", "tools_used": [], "model": "test-model"}
+    assert response.json() == {"reply": "Вітаю!", "tools_used": [], "model": "test-model", "attachments": []}
     assert llm.calls[0]["messages"][-1] == user_message()
 
 
@@ -121,3 +122,18 @@ def test_not_configured_returns_503(client, monkeypatch):
     response = client.post("/chat/", json={"messages": [user_message()]})
 
     assert response.status_code == 503
+
+
+def test_chat_returns_attachments(client, monkeypatch):
+    use_llm(ScriptedLLM([]))
+    attachment = {"type": "chart", "chart": {"labels": ["2026-09"]}}
+    monkeypatch.setattr(
+        chat_router,
+        "run_agent",
+        lambda history, user_id, llm: AgentResult(reply="Ось графік.", tools_used=["build_chart"], attachments=[attachment]),
+    )
+
+    response = client.post("/chat/", json={"messages": [user_message()]})
+
+    assert response.status_code == 200
+    assert response.json()["attachments"] == [attachment]

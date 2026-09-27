@@ -29,11 +29,11 @@ def test_text_reply_without_tools():
 def test_executes_tool_then_answers(monkeypatch):
     executed = []
 
-    def fake_execute(name, arguments, user_id):
+    def fake_run(name, arguments, user_id):
         executed.append((name, arguments, user_id))
-        return '{"balance": 5}'
+        return '{"balance": 5}', None
 
-    monkeypatch.setattr(runner, "execute_tool", fake_execute)
+    monkeypatch.setattr(runner, "run_tool", fake_run)
     llm = ScriptedLLM(
         [
             AssistantTurn(content=None, tool_calls=[ToolCall(id="c1", name="get_transactions_summary", arguments={})]),
@@ -52,7 +52,7 @@ def test_executes_tool_then_answers(monkeypatch):
 
 
 def test_multiple_tool_calls_in_one_turn(monkeypatch):
-    monkeypatch.setattr(runner, "execute_tool", lambda name, arguments, user_id: "{}")
+    monkeypatch.setattr(runner, "run_tool", lambda name, arguments, user_id: ("{}", None))
     llm = ScriptedLLM(
         [
             AssistantTurn(
@@ -74,7 +74,7 @@ def test_multiple_tool_calls_in_one_turn(monkeypatch):
 
 def test_caps_tool_calls_per_turn(monkeypatch):
     executed = []
-    monkeypatch.setattr(runner, "execute_tool", lambda name, arguments, user_id: executed.append(name) or "{}")
+    monkeypatch.setattr(runner, "run_tool", lambda name, arguments, user_id: (executed.append(name) or "{}", None))
     calls = [ToolCall(id=str(i), name="get_insights", arguments={}) for i in range(10)]
     llm = ScriptedLLM([AssistantTurn(content=None, tool_calls=calls), AssistantTurn(content="Готово")])
 
@@ -88,7 +88,7 @@ def test_caps_tool_calls_per_turn(monkeypatch):
 
 
 def test_stops_after_max_iterations(monkeypatch):
-    monkeypatch.setattr(runner, "execute_tool", lambda name, arguments, user_id: "{}")
+    monkeypatch.setattr(runner, "run_tool", lambda name, arguments, user_id: ("{}", None))
     looping = AssistantTurn(content=None, tool_calls=[ToolCall(id="x", name="get_insights", arguments={})])
     llm = ScriptedLLM([looping] * 10)
 
@@ -117,3 +117,33 @@ def test_loads_profile_context_when_not_given(monkeypatch):
     runner.run_agent(HISTORY, "user-1", llm, today=TODAY)
 
     assert "- профіль user-1" in llm.calls[0]["messages"][0]["content"]
+
+
+def test_collects_attachments(monkeypatch):
+    monkeypatch.setattr(
+        runner, "run_tool", lambda name, arguments, user_id: ('{"status": "chart_shown"}', {"type": "chart", "chart": {}})
+    )
+    llm = ScriptedLLM(
+        [
+            AssistantTurn(content=None, tool_calls=[ToolCall(id="c1", name="build_chart", arguments={})]),
+            AssistantTurn(content="Ось графік."),
+        ]
+    )
+
+    result = run(llm)
+
+    assert result.attachments == [{"type": "chart", "chart": {}}]
+    assert llm.calls[1]["messages"][-1] == {"role": "tool", "tool_call_id": "c1", "content": '{"status": "chart_shown"}'}
+
+
+def test_limits_attachments_per_reply(monkeypatch):
+    monkeypatch.setattr(runner, "run_tool", lambda name, arguments, user_id: ("{}", {"type": "chart", "chart": {}}))
+    calls = [ToolCall(id=str(i), name="build_chart", arguments={}) for i in range(runner.MAX_ATTACHMENTS + 1)]
+    llm = ScriptedLLM([AssistantTurn(content=None, tool_calls=calls), AssistantTurn(content="Готово")])
+
+    result = run(llm)
+
+    assert len(result.attachments) == runner.MAX_ATTACHMENTS
+    tool_messages = [m for m in llm.calls[1]["messages"] if m["role"] == "tool"]
+    assert "Забагато графіків" in tool_messages[-1]["content"]
+    assert all(m["content"] == "{}" for m in tool_messages[:-1])

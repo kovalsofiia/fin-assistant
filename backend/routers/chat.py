@@ -41,6 +41,8 @@ class ChatResponse(BaseModel):
     reply: str
     tools_used: List[str]
     model: str
+    # Графіки та чернетки транзакцій для віджета; у LLM вони не повертаються
+    attachments: List[dict] = Field(default_factory=list)
 
 
 class ModelsResponse(BaseModel):
@@ -97,4 +99,6 @@ def chat(
         logger.exception("Chat agent error")
         raise HTTPException(status_code=502, detail="Помилка звернення до мовної моделі. Спробуйте пізніше.")
 
-    return ChatResponse(reply=result.reply, tools_used=result.tools_used, model=model)
+    return ChatResponse(
+        reply=result.reply, tools_used=result.tools_used, model=model, attachments=result.attachments
+    )
