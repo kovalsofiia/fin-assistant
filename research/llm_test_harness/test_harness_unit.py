@@ -88,6 +88,26 @@ def test_broken_test_file_skips_mutation_scoring_instead_of_inflating_it():
     assert evaluation["mutation_results"] == []
 
 
+def test_always_failing_test_file_also_skips_mutation_scoring():
+    """Регресія: тест, що збирається, але хибно падає на оригіналі (неправильні очікування),
+    так само падає на кожному мутанті — і теж раніше отримував оманливий mutation_score=1.0."""
+    original = Path(__file__).resolve().parents[2] / "backend/agent/drafts.py"
+    always_wrong_test = (
+        "from agent.drafts import build_draft\n"
+        "from datetime import date\n\n"
+        "def test_wrong_expectation():\n"
+        "    result = build_draft('expense', 100, '2026-01-01', [], False, date(2026, 1, 2))\n"
+        "    assert result['amount'] == 999  # свідомо неправильне очікування\n"
+    )
+
+    evaluation = evaluate_test_file(original.read_text(), always_wrong_test)
+
+    assert evaluation["baseline"]["collection_error"] is False
+    assert evaluation["baseline"]["failed"] == 1
+    assert evaluation["mutation_score"] is None
+    assert evaluation["mutation_results"] == []
+
+
 def test_avg_ignores_none_and_handles_all_none():
     assert _avg([1.0, None, 3.0], 2) == 2.0
     assert _avg([None, None], 2) is None

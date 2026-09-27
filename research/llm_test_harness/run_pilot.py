@@ -16,6 +16,7 @@ import statistics
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 HARNESS_DIR = Path(__file__).resolve().parent
@@ -30,6 +31,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(REPO_ROOT / "backend/.env")
 
+import httpx  # noqa: E402
 from openai import OpenAI  # noqa: E402
 
 import config  # noqa: E402
@@ -44,18 +46,42 @@ LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 
 
+def _do_call(client: OpenAI, model: config.ModelSpec, prompt: str):
+    return client.chat.completions.create(
+        model=model.id,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=config.TEMPERATURE,
+        timeout=config.REQUEST_TIMEOUT_S,
+    )
+
+
+# Спостерігали (2026-09-27): один запит до DeepSeek через OpenRouter завис на 10+ хвилин без
+# жодного винятку — ані per-request `timeout=` у openai SDK, ані навіть тайм-аут на рівні
+# ThreadPoolExecutor.result() (перевірено окремо: сам механізм future.result(timeout=...)
+# спрацьовує коректно за 2с на звичайному Python-коді) його не перервали. Причина — TCP/DNS
+# зависання нижче httpx: без явного httpx.Timeout SDK покладається на дефолтні (по суті
+# необмежені для connect) тайм-аути. Тому нижче явний httpx-клієнт з тайм-аутом на кожній
+# фазі з'єднання (connect/read/write/pool) — це enforced на рівні сокета (socket.settimeout),
+# а не потоку Python, і реально гарантує розрив зависання. ThreadPoolExecutor лишаємо як
+# другий рубіж захисту (belt-and-suspenders): якщо виклик усе ж зависне, пілот піде далі,
+# нехай і з «протеклим» потоком.
+_HTTP_CLIENT = httpx.Client(timeout=httpx.Timeout(connect=10.0, read=config.REQUEST_TIMEOUT_S, write=10.0, pool=10.0))
+_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="llm-call")
+
+
 def call_model(client: OpenAI, model: config.ModelSpec, prompt: str) -> dict:
     """Один виклик моделі. Повертає {content, prompt_tokens, completion_tokens, latency_s} або {error}."""
     started = time.monotonic()
+    future = _EXECUTOR.submit(_do_call, client, model, prompt)
     try:
-        response = client.chat.completions.create(
-            model=model.id,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=config.TEMPERATURE,
-            timeout=config.REQUEST_TIMEOUT_S,
-        )
+        response = future.result(timeout=config.REQUEST_TIMEOUT_S + 30)
+    except FutureTimeoutError:
+        return {
+            "error": f"Жорсткий тайм-аут {config.REQUEST_TIMEOUT_S + 30}с — провайдер не відповів",
+            "latency_s": round(time.monotonic() - started, 2),
+        }
     except Exception as exc:  # мережа/провайдер — фіксуємо як помилку запуску, не падаємо
-        return {"error": f"{type(exc).__name__}: {exc}", "latency_s": time.monotonic() - started}
+        return {"error": f"{type(exc).__name__}: {exc}", "latency_s": round(time.monotonic() - started, 2)}
 
     latency_s = time.monotonic() - started
     usage = response.usage
@@ -70,17 +96,20 @@ def call_model(client: OpenAI, model: config.ModelSpec, prompt: str) -> dict:
 def evaluate_test_file(original_source: str, test_source: str) -> dict:
     """Ганяє test_source у пісочниці проти оригіналу (з покриттям) і проти кожного мутанта.
 
-    Якщо файл тестів не проходить збірку (collection_error) проти самого оригіналу — він
-    так само не збереться проти жодного мутанта, тож mutation_score там нічого не означає
-    (кожен прогін «падає» однаково, незалежно від того, чи мутант справді зламав логіку).
-    У такому разі мутаційне тестування пропускається, а mutation_score = None.
+    Мутаційне тестування має сенс лише для test suite, який повністю проходить на оригіналі
+    (стандартна вимога mutation testing: спершу «зелений» набір тестів, потім — мутанти).
+    Якщо частина тестів уже падає на оригіналі (неправильні очікування в самих тестах) або
+    файл узагалі не збирається — кожен прогін проти мутанта «падає» так само, незалежно від
+    того, чи мутант справді зламав логіку, і mutation_score = 1.0 був би оманливим. У цих
+    випадках мутаційне тестування пропускається, а mutation_score = None.
     """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         sandbox.build_sandbox(root, original_source, test_source)
         baseline = sandbox.run_tests(root, with_coverage=True)
 
-    if baseline["collection_error"]:
+    baseline_all_passing = not baseline["collection_error"] and baseline["failed"] == 0 and baseline["errors"] == 0
+    if not baseline_all_passing:
         return {"baseline": baseline, "mutation_results": [], "mutation_score": None}
 
     mutation_results = []
@@ -191,22 +220,30 @@ def main():
 
     original_source = sandbox.read_original_source()
     prompt = build_prompt(original_source)
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=config.REQUEST_TIMEOUT_S, max_retries=1)
-
-    records = []
-    for model in config.PILOT_MODELS:
-        for repeat in range(1, config.REPEATS_PER_MODEL + 1):
-            print(f"-> {model.label} (повтор {repeat}/{config.REPEATS_PER_MODEL})...", flush=True)
-            record = run_one(client, model, repeat, original_source, prompt)
-            print(f"   {record['status']}"
-                  + (f" pass_rate={record.get('pass_rate')} mutation_score={record.get('mutation_score')}"
-                     if record["status"] == "evaluated" else f" error={record.get('error')}"))
-            records.append(record)
+    client = OpenAI(
+        api_key=LLM_API_KEY,
+        base_url=LLM_BASE_URL,
+        timeout=config.REQUEST_TIMEOUT_S,
+        max_retries=1,
+        http_client=_HTTP_CLIENT,
+    )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    with (RESULTS_DIR / "runs.jsonl").open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    runs_path = RESULTS_DIR / "runs.jsonl"
+    records = []
+    # Пишемо кожен запис одразу після прогону: якщо один провайдер зависне чи впаде,
+    # уже зібрані результати попередніх моделей/повторів не втрачаються.
+    with runs_path.open("w", encoding="utf-8") as f:
+        for model in config.PILOT_MODELS:
+            for repeat in range(1, config.REPEATS_PER_MODEL + 1):
+                print(f"-> {model.label} (повтор {repeat}/{config.REPEATS_PER_MODEL})...", flush=True)
+                record = run_one(client, model, repeat, original_source, prompt)
+                print(f"   {record['status']}"
+                      + (f" pass_rate={record.get('pass_rate')} mutation_score={record.get('mutation_score')}"
+                         if record["status"] == "evaluated" else f" error={record.get('error')}"))
+                records.append(record)
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.flush()
 
     summary_rows = summarize(records)
     with (RESULTS_DIR / "summary.csv").open("w", newline="", encoding="utf-8") as f:
