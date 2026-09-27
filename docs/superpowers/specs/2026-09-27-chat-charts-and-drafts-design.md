@@ -31,7 +31,7 @@ runner.run_tool ─────┼── model_result (JSON) ──▶ LLM
                                                                         │
 ChatWidget ◀────────────────────────────────────────────────────────────┘
   ├─ type "chart"             → ChatChart.vue (vue-chartjs: Bar / Line / Doughnut)
-  └─ type "transaction_draft" → TransactionDraftCard.vue → transactionStore.addTransaction → POST /transactions
+  └─ type "transaction_draft" → TransactionDraftCard.vue → api.createTransaction → POST /transactions
 ```
 
 ### Контракт `build_chart` (аргументи моделі)
@@ -85,7 +85,7 @@ ChatWidget ◀──────────────────────
 - `ChatChart.vue`: vue-chartjs (`Bar`, `Line`, `Doughnut`), реєстрація потрібних елементів Chart.js, фіксована палітра, висота 220px, заголовок, одиниця в tooltip.
 - `TransactionDraftCard.vue` має 4 стани: `editing` → `saving` → `saved` («✓ Додано») | `cancelled` («Скасовано»); помилка показується в картці.
   - Категорії беруться з `transactionStore.categories[form.type]`. Якщо їх немає, спершу викликається `fetchCategories()`.
-  - Кнопка «Додати» викликає `transactionStore.addTransaction({type, amount, date, category_id, description, currency: 'UAH', is_fop})`, і store сам оновлює дашборд.
+  - Кнопка «Додати» викликає `api.createTransaction({type, amount, date, category_id, description, currency: 'UAH', is_fop})`, а потім окремо `transactionStore.fetchTransactions()`, щоб оновити дашборд. Помилка оновлення не показується як помилка запису, інакше користувач може додати дубль.
   - Кнопка неактивна, поки не заповнено суму, дату й тип.
 
 ## Обробка помилок
