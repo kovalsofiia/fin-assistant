@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
 
+from agent import charts, drafts
 from models.common import ReportingPeriod
 from routers import analytics as analytics_router
 from routers import budgets as budgets_router
@@ -198,6 +199,118 @@ def _categories(user_id: str) -> Any:
     }
 
 
+# --- UI tools: графіки та чернетки транзакцій (дані для клієнта йдуть у вкладення) ---
+
+MAX_CHART_TRANSACTIONS = 500
+MAX_LISTED_CATEGORIES = 30
+
+
+@dataclass(frozen=True)
+class WithAttachment:
+    """Результат tool: model_result іде в LLM, attachment — лише клієнту у відповіді /chat/."""
+
+    model_result: Any
+    attachment: dict
+
+
+def _resolve_categories(user_id: str, names: list) -> dict:
+    """{category_id: назва} для назв із запиту (без урахування регістру)."""
+    if not names:
+        return {}
+    all_categories = categories_router.get_categories(current_user_id=user_id).get("all", [])
+    by_name = {}
+    for category in all_categories:
+        by_name.setdefault(category["name"].casefold(), []).append(category)
+
+    selected, unknown = {}, []
+    for name in names:
+        matches = by_name.get(name.casefold())
+        if not matches:
+            unknown.append(name)
+            continue
+        for category in matches:
+            selected[category["id"]] = category["name"]
+    if unknown:
+        available = ", ".join(sorted({c["name"] for c in all_categories})[:MAX_LISTED_CATEGORIES])
+        raise ToolArgumentError(f"Невідомі категорії: {', '.join(unknown)}. Доступні: {available}")
+    return selected
+
+
+def _build_chart(
+    user_id: str,
+    chart: str,
+    group_by: str,
+    start_date: str,
+    end_date: str,
+    type: str = "expense",  # назва збігається з аргументом моделі
+    metric: str = "sum",
+    categories: Optional[list] = None,
+    search: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Any:
+    try:
+        spec = charts.parse_chart_spec(
+            chart=chart,
+            group_by=group_by,
+            start_date=start_date,
+            end_date=end_date,
+            type=type,
+            metric=metric,
+            categories=categories,
+            search=search,
+            title=title,
+        )
+    except charts.ChartSpecError as exc:
+        raise ToolArgumentError(str(exc))
+
+    selected = _resolve_categories(user_id, list(spec.categories))
+    rows = transactions_router.get_transactions(
+        current_user_id=user_id,
+        limit=MAX_CHART_TRANSACTIONS + 1,
+        offset=0,
+        start_date=spec.start,
+        end_date=spec.end,
+        type=None if spec.type == "both" else spec.type,
+        category_id=next(iter(selected)) if len(selected) == 1 else None,
+        search=spec.search,
+    )
+    if len(rows) > MAX_CHART_TRANSACTIONS:
+        raise ToolArgumentError(
+            f"Забагато транзакцій для графіка (понад {MAX_CHART_TRANSACTIONS}). Звузьте період або фільтри."
+        )
+    names = _category_names(user_id) if spec.group_by == "category" else {}
+    data = charts.build_chart_data(spec, rows, names, selected or None)
+    return WithAttachment(model_result=charts.summarize_chart(data), attachment={"type": "chart", "chart": data})
+
+
+def _propose_transaction(
+    user_id: str,
+    type: str,  # назва збігається з аргументом моделі
+    amount: Any,
+    transaction_date: str,
+    category: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Any:
+    categories = categories_router.get_categories(current_user_id=user_id)
+    try:
+        draft = drafts.build_draft(
+            type=type,
+            amount=amount,
+            transaction_date=transaction_date,
+            categories=categories.get(type, []) if isinstance(type, str) else [],
+            is_fop=categories.get("user_is_fop", True),
+            today=date.today(),
+            category=category,
+            description=description,
+        )
+    except drafts.DraftError as exc:
+        raise ToolArgumentError(str(exc))
+    return WithAttachment(
+        model_result=drafts.draft_model_result(draft),
+        attachment={"type": "transaction_draft", "draft": draft},
+    )
+
+
 # --- Реєстр ---
 
 _DATE = {"type": "string", "description": "Дата у форматі YYYY-MM-DD"}
@@ -322,7 +435,56 @@ EXTENSION_TOOLS = [
     ),
 ]
 
-TOOLS = {tool.name: tool for tool in CORE_TOOLS + EXTENSION_TOOLS}
+UI_TOOLS = [
+    Tool(
+        name="build_chart",
+        description=(
+            "Показати користувачу графік за його транзакціями. Дані рахує сервер — ти обираєш лише тип, "
+            "групування, період і фільтри. Графік з'явиться в чаті автоматично; у тексті дай 1–2 речення висновку."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "chart": {"type": "string", "enum": list(charts.CHART_KINDS), "description": "doughnut — лише з group_by=category"},
+                "group_by": {"type": "string", "enum": list(charts.GROUP_BY)},
+                "start_date": _DATE,
+                "end_date": _DATE,
+                "type": {"type": "string", "enum": list(charts.TYPES), "description": "Типово expense"},
+                "metric": {"type": "string", "enum": list(charts.METRICS), "description": "sum — сума в грн, count — кількість"},
+                "categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": charts.MAX_CATEGORIES,
+                    "description": "Назви категорій для порівняння (по одній серії на категорію)",
+                },
+                "search": {"type": "string", "description": "Текст для пошуку в описі транзакцій"},
+                "title": {"type": "string", "description": f"Заголовок графіка, до {charts.MAX_TITLE_CHARS} символів"},
+            },
+            "required": ["chart", "group_by", "start_date", "end_date"],
+        },
+        handler=_build_chart,
+    ),
+    Tool(
+        name="propose_transaction",
+        description=(
+            "Підготувати чернетку нової транзакції з повідомлення користувача. Нічого не записує: "
+            "користувач перевірить поля в картці й сам натисне «Додати»."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": list(drafts.TYPES)},
+                "amount": {"type": "number", "description": "Сума в грн, більше 0.01"},
+                "transaction_date": {**_DATE, "description": "Дата транзакції (YYYY-MM-DD), не в майбутньому"},
+                "category": {"type": "string", "description": "Назва категорії користувача (див. list_categories)"},
+                "description": {"type": "string", "description": "Короткий опис, до 255 символів"},
+            },
+            "required": ["type", "amount", "transaction_date"],
+        },
+        handler=_propose_transaction,
+    ),
+]
+TOOLS = {tool.name: tool for tool in CORE_TOOLS + EXTENSION_TOOLS + UI_TOOLS}
 
 
 def tool_schemas() -> list:
@@ -355,18 +517,19 @@ def _dump(result: Any) -> str:
     )
 
 
-def execute_tool(name: str, arguments: dict, user_id: str) -> str:
-    """Виконує tool і повертає JSON-рядок для моделі. Ніколи не кидає винятків."""
+def run_tool(name: str, arguments: dict, user_id: str) -> tuple:
+    """Виконує tool. Повертає (JSON-рядок для моделі, вкладення для клієнта або None). Ніколи не кидає."""
     tool = TOOLS.get(name)
     if tool is None:
-        return _dump({"error": f"Невідомий інструмент: {name}"})
+        return _dump({"error": f"Невідомий інструмент: {name}"}), None
     try:
         # Перевірка аргументів до виклику: TypeError від bind — некоректні аргументи моделі,
         # TypeError всередині handler — внутрішня помилка (не плутати ці два випадки).
         # user_id передається позиційно: спроба моделі передати свій user_id дасть TypeError.
         inspect.signature(tool.handler).bind(user_id, **arguments)
     except TypeError as exc:
-        return _dump({"error": f"Некоректні аргументи для {name}: {exc}"})
+        return _dump({"error": f"Некоректні аргументи для {name}: {exc}"}), None
+    attachment = None
     try:
         result = tool.handler(user_id, **arguments)
     except HTTPException as exc:
@@ -380,4 +543,11 @@ def execute_tool(name: str, arguments: dict, user_id: str) -> str:
     except Exception:
         logger.exception("Tool %s failed", name)
         result = {"error": "Внутрішня помилка інструменту"}
-    return _dump(result)
+    if isinstance(result, WithAttachment):
+        result, attachment = result.model_result, result.attachment
+    return _dump(result), attachment
+
+
+def execute_tool(name: str, arguments: dict, user_id: str) -> str:
+    """Виконує tool і повертає лише JSON-рядок для моделі (без вкладення). Ніколи не кидає винятків."""
+    return run_tool(name, arguments, user_id)[0]

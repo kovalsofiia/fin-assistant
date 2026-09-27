@@ -14,7 +14,7 @@ def run(name, arguments, user_id="user-1"):
 
 def test_all_eleven_tools_registered():
     assert EXTENSION_NAMES <= set(tools.TOOLS)
-    assert len(tools.TOOLS) == 11
+    assert len(tools.TOOLS) == 13
 
 
 def test_tax_history(monkeypatch):
