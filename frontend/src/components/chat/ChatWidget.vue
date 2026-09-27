@@ -1,7 +1,9 @@
 <script setup>
 import { nextTick, ref } from 'vue';
 import { MessageCircle, X, Send, RotateCcw, Loader2 } from 'lucide-vue-next';
+import ChatChart from './ChatChart.vue';
 import ChatMarkdown from './ChatMarkdown.vue';
+import TransactionDraftCard from './TransactionDraftCard.vue';
 import api from '@/services/api';
 
 // Мають збігатися з backend/routers/chat.py
@@ -83,11 +85,13 @@ async function send() {
     scrollToBottom();
 
     try {
-        const payload = messages.value
-        .slice(-MAX_HISTORY)
-        .map((m) => (m.role === 'assistant' ? { ...m, content: m.content.slice(0, MAX_ASSISTANT_CHARS) } : m));
-    const { data } = await api.sendChatMessage(payload, selectedModel.value);
-        messages.value.push({ role: 'assistant', content: data.reply });
+        // У бекенд ідуть лише role і content: вкладення (графіки, чернетки) в LLM не повертаються
+        const payload = messages.value.slice(-MAX_HISTORY).map((m) => ({
+            role: m.role,
+            content: m.role === 'assistant' ? m.content.slice(0, MAX_ASSISTANT_CHARS) : m.content,
+        }));
+        const { data } = await api.sendChatMessage(payload, selectedModel.value);
+        messages.value.push({ role: 'assistant', content: data.reply, attachments: data.attachments || [] });
     } catch (e) {
         // Повертаємо текст у поле, щоб користувач міг повторити без дублювання в історії
         messages.value.pop();
@@ -162,6 +166,12 @@ async function send() {
             class="max-w-[92%] rounded-2xl bg-white px-3 py-2 text-gray-800 shadow-sm ring-1 ring-gray-100"
           >
             <ChatMarkdown :content="message.content" />
+            <div v-if="message.attachments?.length" class="mt-2 space-y-2">
+              <template v-for="(attachment, attachmentIndex) in message.attachments" :key="attachmentIndex">
+                <ChatChart v-if="attachment.type === 'chart'" :chart="attachment.chart" />
+                <TransactionDraftCard v-else-if="attachment.type === 'transaction_draft'" :draft="attachment.draft" />
+              </template>
+            </div>
           </div>
         </template>
         <div
