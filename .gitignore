@@ -6,6 +6,7 @@
 # 2. Папки бібліотек
 node_modules/
 venv/
+.venv/
 __pycache__/
 *.exe
 

@@ -523,7 +523,7 @@ const getCategoryName = (id) => {
     <!-- Floating Action Button: Add Transaction -->
     <button 
       @click="openCreateModal"
-      class="fixed z-50 bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-2xl shadow-blue-300 flex items-center justify-center gap-3 hover:scale-110 active:scale-95 group w-16 h-16 md:w-auto md:h-auto md:py-4 md:px-8 rounded-full md:rounded-2xl bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-8 sm:right-8"
+      class="fixed z-50 bg-blue-600 hover:bg-blue-700 text-white font-black transition-all shadow-2xl shadow-blue-300 flex items-center justify-center gap-3 hover:scale-110 active:scale-95 group w-16 h-16 md:w-auto md:h-auto md:py-4 md:px-8 rounded-full md:rounded-2xl bottom-[max(5.75rem,calc(env(safe-area-inset-bottom)+4.25rem))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-28 sm:right-8"
     >
       <div class="flex items-center justify-center group-hover:rotate-90 transition-transform duration-300">
         <Plus :size="24" stroke-width="3" />

@@ -1,0 +1,11 @@
+{
+  "name": "fin-assistant",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "project:start": "node scripts/project-start.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
